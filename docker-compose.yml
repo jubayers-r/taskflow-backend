@@ -1,0 +1,37 @@
+services:
+  # --- Redis Cache ---
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - '6352:6379'
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Postgres DB ---
+  postgres:
+    image: postgres:18-alpine
+    restart: always
+    ports:
+      - '5452:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ticketdb
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ticketdb']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+  postgres_data:
