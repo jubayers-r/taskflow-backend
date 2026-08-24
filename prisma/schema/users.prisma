@@ -1,0 +1,26 @@
+model User {
+    id           String        @id @default(uuid())
+    email        String        @unique
+    password     String
+    firstName    String
+    lastName     String
+    role         UserRole      @default(MEMBER)
+    isActive     Boolean       @default(true)
+    createdAt    DateTime      @default(now())
+    updatedAt    DateTime      @updatedAt
+    comments     Comment[]
+    attachments  Attachment[]
+    activityLogs ActivityLog[]
+    agency       Agency        @relation(fields: [agencyId], references: [id])
+    agencyId     String
+    tasks        Task[]
+
+    @@index([agencyId])
+    @@map("users")
+}
+
+enum UserRole {
+    OWNER
+    MANAGER
+    MEMBER
+}
