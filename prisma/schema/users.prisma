@@ -1,13 +1,24 @@
 model User {
-    id           String        @id @default(uuid())
-    email        String        @unique
-    password     String
+    id           String     @id @default(uuid())
+    email        String     @unique
+    passwordHash String
     firstName    String
     lastName     String
-    role         UserRole      @default(MEMBER)
-    isActive     Boolean       @default(true)
-    createdAt    DateTime      @default(now())
-    updatedAt    DateTime      @updatedAt
+    gender       GenderEnum
+    profileImage String?    @default("https://img.icons8.com/?size=256&id=85050&format=png")
+    role         UserRole   @default(MEMBER)
+
+    isActive     Boolean  @default(true)
+    isRestricted Boolean  @default(false)
+    fcmTokens    String[]
+
+    isAgreeWithTerms Boolean   @default(false)
+    termsAgreedAt    DateTime?
+    emailVerifiedAt  DateTime?
+
+    refreshTokens RefreshToken[]
+    otps          OTP[] // Added relation link
+
     comments     Comment[]
     attachments  Attachment[]
     activityLogs ActivityLog[]
@@ -15,8 +26,81 @@ model User {
     agencyId     String
     tasks        Task[]
 
+    createdAt       DateTime       @default(now())
+    updatedAt       DateTime       @updatedAt
+    sentInvitations Invitation[]   @relation("SentInvitations")
+    payments        Payment[]
+    subscriptions   Subscription[]
+
     @@index([agencyId])
     @@map("users")
+}
+
+model OTP {
+    id         String     @id @default(uuid())
+    identifier String
+    codeHash   String
+    purpose    OtpPurpose
+    channel    OtpChannel
+
+    attempts    Int       @default(0)
+    maxAttempts Int       @default(5)
+    expiresAt   DateTime
+    consumedAt  DateTime? // Track when it was used/invalidated
+
+    ipAddress String?
+    userAgent String?
+
+    userId String? // Optional if sending OTP to non-users (like guest signup)
+    user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([identifier, consumedAt])
+    @@index([identifier, purpose, consumedAt])
+    @@index([expiresAt])
+    @@map("otps")
+}
+
+model RefreshToken {
+    id        String        @id @default(uuid())
+    userId    String
+    tokenHash String
+    expiresAt DateTime
+    tokenType TokenTypeEnum
+    revokedAt DateTime?
+    createdAt DateTime      @default(now())
+    updatedAt DateTime      @updatedAt
+    user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([tokenHash, expiresAt])
+    @@index([userId])
+    @@index([expiresAt])
+    @@map("expired_tokens")
+}
+
+enum OtpChannel {
+    EMAIL
+    SMS
+}
+
+enum OtpPurpose {
+    VERIFY_EMAIL
+    PASSWORD_RESET
+    LOGIN
+}
+
+enum GenderEnum {
+    MALE
+    FEMALE
+    OTHER
+}
+
+enum TokenTypeEnum {
+    ACCESS
+    REFRESH
+    PASSWORD_RESET
 }
 
 enum UserRole {
