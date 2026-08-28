@@ -5,12 +5,12 @@ export function errorHandler(err: Error, req: Request, res: Response, next: Next
   const requestId = res.locals.requestId;
   // req.log.error({ err }, 'Unhandled request error');
 
-  if (err.message === 'OUT_OF_STOCK') {
-    return res.status(400).json({ error: 'Ticket out of stock', requestId });
+  if (err.message === 'BAD_REQUEST') {
+    return res.status(400).json({ error: 'Bad request', requestId });
   }
 
   if (err.message === 'NOT_FOUND') {
-    return res.status(404).json({ error: 'Event not found', requestId });
+    return res.status(404).json({ error: 'Not found', requestId });
   }
   if (err.message === 'SERVER_BUSY') {
     return res.status(503).json({ error: 'Server busy, please retry', requestId });

@@ -4,7 +4,9 @@ import express, { Application } from 'express';
 import helmet from 'helmet';
 import path from 'path';
 import { env } from './config';
+
 import { errorHandler } from './middlewares/errorHandler';
+import { notFoundHandler } from './middlewares/notFoundHandler';
 import { requestIdMiddleware } from './middlewares/requestId';
 import Routes from './routes';
 
@@ -21,18 +23,8 @@ app.use(cookieParser());
 
 app.use('/api/v1', Routes);
 
-//global not found middleware (temporary must change in production)
-app.use((req, res, next) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    data: {
-      path: req.originalUrl,
-      method: req.method,
-      time: new Date().toISOString(),
-    },
-  });
-});
+//global API not found middleware
+app.use(notFoundHandler);
 
 //global error middleware
 app.use(errorHandler);

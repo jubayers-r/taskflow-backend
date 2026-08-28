@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "rootDir": "./src",
     "outDir": "./dist",
     "typeRoots": ["./node_modules/@types", "./src/types"],
 
@@ -31,18 +30,12 @@
     "noPropertyAccessFromIndexSignature": false,
 
     // Path Aliases (All inside src)
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@/env": ["./src/config/env.ts"]
+      "@/env": ["./src/config/env.ts"],
+      "@/prisma/*": ["./prisma/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "src/types/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*", "types/*.d.ts", "prisma/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
