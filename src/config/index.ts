@@ -18,6 +18,14 @@ const envSchema = z.object({
   REDIS_HOST_DEV: z.string().min(1).default('localhost'),
 
   ALLOWED_ORIGINS: z.string().transform((val) => val.split(',').map((origin) => origin.trim())),
+
+  // JWT config
+
+  JWT_ACCESS_SECRET: z.string().min(1),
+  JWT_REFRESH_SECRET: z.string().min(1),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  SALT_ROUNDS: z.coerce.number().int().min(1).default(10),
 });
 
 const _env = envSchema.safeParse(process.env);
