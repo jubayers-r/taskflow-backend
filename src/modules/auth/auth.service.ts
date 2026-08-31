@@ -1,130 +1,205 @@
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
+import { AuthInputType } from './auth.schema';
 import { AuthUtils } from './auth.utils';
 
-const login = async (email: string, pass: string, meta: { ip?: string; userAgent?: string }) => {
-  const user = await prisma.user.findUnique({ where: { email } });
+// ==========================================
+// 1. LOGIN
+// ==========================================
+const login = async (
+  payload: AuthInputType['loginPayload'],
+  meta: { ip?: string; userAgent?: string },
+) => {
+  const { email, password, fcmToken, rememberMe } = payload;
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      agencyId: true,
+      passwordHash: true,
+      isActive: true,
+      isRestricted: true,
+    },
+  });
+
   if (!user || user.isRestricted || !user.isActive) {
     throw new Error('INVALID_CREDENTIALS');
   }
 
-  const isValid = await bcrypt.compare(pass, user.passwordHash);
+  const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) throw new Error('INVALID_CREDENTIALS');
 
-  const familyId = crypto.randomUUID();
-  const tokenId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const sessionDays = rememberMe ? 30 : 1;
+  const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
 
-  // Store session record in DB
-  await prisma.refreshToken.create({
-    data: {
-      id: tokenId,
-      familyId,
-      userId: user.id,
-      expiresAt,
-      ipAddress: meta.ip,
-      userAgent: meta.userAgent,
-      isUsed: false,
-    },
+  // Generate Opaque Token
+  const sessionId = crypto.randomUUID();
+  const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
+
+  await prisma.$transaction(async (tx) => {
+    if (fcmToken) {
+      await tx.session.updateMany({
+        where: { fcmToken },
+        data: { fcmToken: null },
+      });
+    }
+
+    await tx.session.create({
+      data: {
+        id: sessionId,
+        userId: user.id,
+        fcmToken: fcmToken ?? null,
+        userAgent: meta.userAgent,
+        ipAddress: meta.ip,
+        refreshTokens: {
+          create: {
+            tokenHash,
+            expiresAt: sessionExpiresAt,
+            isUsed: false,
+          },
+        },
+      },
+    });
   });
 
   const accessToken = await AuthUtils.signAccessToken({
     userId: user.id,
     role: user.role,
     agencyId: user.agencyId,
+    sessionId,
   });
 
-  const refreshToken = await AuthUtils.signRefreshToken({
-    userId: user.id,
-    tokenId,
-    familyId,
-  });
-
-  return { accessToken, refreshToken };
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt: sessionExpiresAt,
+  };
 };
 
+// ==========================================
+// 2. REFRESH TOKENS (RTR)
+// ==========================================
 const refreshTokens = async (
   incomingRefreshToken: string,
   meta: { ip?: string; userAgent?: string },
 ) => {
-  // 1. Verify token signature & expiry
-  let payload;
-  try {
-    payload = await AuthUtils.verifyRefreshToken(incomingRefreshToken);
-  } catch {
-    throw new Error('INVALID_OR_EXPIRED_TOKEN');
-  }
+  const { sessionId, rawSecret } = AuthUtils.parseCompoundToken(incomingRefreshToken);
+  const tokenHash = AuthUtils.hashToken(rawSecret);
 
-  const { tokenId, familyId, sub: userId } = payload;
-
-  // 2. Fetch token from DB
-  const tokenRecord = await prisma.refreshToken.findUnique({
-    where: { id: tokenId },
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          role: true,
+          agencyId: true,
+          isActive: true,
+          isRestricted: true,
+        },
+      },
+      refreshTokens: {
+        where: { tokenHash },
+      },
+    },
   });
 
-  if (!tokenRecord) {
-    throw new Error('TOKEN_NOT_FOUND');
+  if (!session || session.revokedAt || !session.user) {
+    throw new Error('SESSION_REVOKED_OR_EXPIRED');
   }
 
-  // 3. Breach Check: If token is already used or revoked, invalidate the family
-  if (tokenRecord.isUsed || tokenRecord.revokedAt) {
-    await prisma.refreshToken.deleteMany({ where: { familyId } });
+  if (!session.user.isActive || session.user.isRestricted) {
+    throw new Error('USER_UNAUTHORIZED');
+  }
+
+  const currentTokenRecord = session.refreshTokens[0];
+
+  // Breach Detection: token not found or already used
+  if (!currentTokenRecord || currentTokenRecord.isUsed) {
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: {
+        revokedAt: new Date(),
+        fcmToken: null,
+      },
+    });
     throw new Error('TOKEN_REUSE_DETECTED');
   }
 
-  // 4. Invalidate used token & create replacement in an atomic transaction
-  const nextTokenId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  // Check Expiration
+  if (new Date() > currentTokenRecord.expiresAt) {
+    throw new Error('TOKEN_EXPIRED');
+  }
+
+  // Generate next rotation secret
+  const { tokenHash: nextTokenHash, refreshToken: nextRefreshToken } =
+    AuthUtils.generateOpaqueRefreshToken(sessionId);
+
+  const expiresAt = currentTokenRecord.expiresAt;
 
   await prisma.$transaction([
     prisma.refreshToken.update({
-      where: { id: tokenId },
+      where: { id: currentTokenRecord.id },
       data: { isUsed: true },
     }),
     prisma.refreshToken.create({
       data: {
-        id: nextTokenId,
-        familyId,
-        userId,
+        sessionId,
+        tokenHash: nextTokenHash,
         expiresAt,
-        ipAddress: meta.ip,
-        userAgent: meta.userAgent,
         isUsed: false,
+      },
+    }),
+    prisma.session.update({
+      where: { id: sessionId },
+      data: {
+        lastActiveAt: new Date(),
+        ipAddress: meta.ip ?? session.ipAddress,
+        userAgent: meta.userAgent ?? session.userAgent,
       },
     }),
   ]);
 
-  // 5. Fetch user metadata for access token claims
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.isActive || user.isRestricted) {
-    throw new Error('USER_UNAUTHORIZED');
-  }
-
-  const newAccessToken = await AuthUtils.signAccessToken({
-    userId: user.id,
-    role: user.role,
-    agencyId: user.agencyId,
+  const accessToken = await AuthUtils.signAccessToken({
+    userId: session.user.id,
+    role: session.user.role,
+    agencyId: session.user.agencyId,
+    sessionId: session.id,
   });
 
-  const newRefreshToken = await AuthUtils.signRefreshToken({
-    userId: user.id,
-    tokenId: nextTokenId,
-    familyId,
-  });
-
-  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  return {
+    accessToken,
+    refreshToken: nextRefreshToken,
+    expiresAt,
+  };
 };
 
+// ==========================================
+// 3. LOGOUT
+// ==========================================
 const logout = async (incomingRefreshToken: string) => {
   try {
-    const { tokenId } = await AuthUtils.verifyRefreshToken(incomingRefreshToken);
-    await prisma.refreshToken.update({
-      where: { id: tokenId },
-      data: { revokedAt: new Date() },
-    });
+    const { sessionId, rawSecret } = AuthUtils.parseCompoundToken(incomingRefreshToken);
+    const tokenHash = AuthUtils.hashToken(rawSecret);
+
+    await prisma.$transaction([
+      prisma.session.update({
+        where: { id: sessionId },
+        data: {
+          revokedAt: new Date(),
+          fcmToken: null,
+        },
+      }),
+      prisma.refreshToken.updateMany({
+        where: { tokenHash },
+        data: { isUsed: true },
+      }),
+    ]);
   } catch {
-    // Fail silently on invalid tokens during logout
+    // Fail silently during logout
   }
 };
 
