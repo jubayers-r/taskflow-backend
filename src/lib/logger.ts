@@ -10,4 +10,7 @@ export const logger = pino({
   base: { service: 'taskflow' },
   timestamp: pino.stdTimeFunctions.isoTime,
   redact: ['req.headers.authorization', 'password', 'token', 'secret'],
+  formatters: {
+    level: (label) => ({ level: label }),
+  },
 });
