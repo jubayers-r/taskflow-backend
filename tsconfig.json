@@ -36,6 +36,6 @@
       "@/prisma/*": ["./prisma/*"]
     }
   },
-  "include": ["src/**/*", "types/*.d.ts", "prisma/**/*"],
+  "include": ["src/**/*", "prisma/**/*"],
   "exclude": ["node_modules", "dist"]
 }
