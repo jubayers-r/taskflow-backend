@@ -112,29 +112,6 @@ model Attachment {
     @@map("attachments")
 }
 
-model ActivityLog {
-    id      String  @id @default(uuid())
-    action  String
-    details String?
-
-    project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-    projectId String
-
-    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-    userId String?
-
-    agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-    agencyId String
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
-    taskId    String?
-
-    @@index([projectId, createdAt])
-    @@map("activity_logs")
-}
-
 model Invitation {
     id        String           @id @default(uuid())
     email     String

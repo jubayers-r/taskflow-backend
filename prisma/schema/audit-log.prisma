@@ -1,0 +1,62 @@
+// =======================================================================
+// 1. AUDIT LOG (Security, Compliance, Administrative Trail)
+// =======================================================================
+model AuditLog {
+    id         String @id @default(uuid())
+    action     String
+    entityType String
+    entityId   String
+
+    actorId  String? @map("actor_id") // Pure raw string, no relation
+    agencyId String  @map("agency_id")
+
+    ipAddress String?  @map("ip_address")
+    userAgent String?  @map("user_agent")
+    metadata  Json?
+    createdAt DateTime @default(now()) @map("created_at")
+
+    @@index([agencyId, createdAt(sort: Desc)])
+    @@map("audit_logs")
+}
+
+// =======================================================================
+// 2. ACTIVITY LOG (User-Facing In-App Timeline / Feeds)
+// =======================================================================
+model ActivityLog {
+    id   String       @id @default(uuid())
+    type ActivityType // DB Enum is fine here because UI event types are predictable
+
+    // Foreign Keys (Cascading ensures cleanup when projects/tasks are removed)
+    agencyId String @map("agency_id")
+    agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+    projectId String?  @map("project_id")
+    project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+    taskId String? @map("task_id")
+    task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+    userId String? @map("user_id")
+    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    // Dynamic payload for UI text rendering
+    // Example shape: { "taskTitle": "Fix bug", "fromStatus": "TODO", "toStatus": "DONE" }
+    data Json?
+
+    createdAt DateTime @default(now()) @map("created_at")
+
+    @@index([taskId, createdAt(sort: Desc)])
+    @@index([projectId, createdAt(sort: Desc)])
+    @@index([agencyId, createdAt(sort: Desc)])
+    @@map("activity_logs")
+}
+
+enum ActivityType {
+    TASK_CREATED
+    TASK_STATUS_CHANGED
+    TASK_ASSIGNED
+    TASK_DUE_DATE_CHANGED
+    COMMENT_ADDED
+    ATTACHMENT_UPLOADED
+    PROJECT_CREATED
+}
