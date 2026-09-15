@@ -7,7 +7,7 @@ export const logger = pino({
     env.NODE_ENV !== 'production'
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
-  base: { service: 'taskflow' },
+  base: { service: 'taskflow-http' },
   timestamp: pino.stdTimeFunctions.isoTime,
   redact: [
     // Headers & Auth
