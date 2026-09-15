@@ -6,13 +6,13 @@ const ACCESS_SECRET = new TextEncoder().encode(process.env.JWT_ACCESS_SECRET!);
 interface AccessTokenPayload extends jose.JWTPayload {
   sub: string;
   role: string;
-  agencyId: string;
+  agencyId: string | null;
 }
 
 const signAccessToken = async (payload: {
   userId: string;
   role: string;
-  agencyId: string;
+  agencyId: string | null;
   sessionId: string;
 }): Promise<string> => {
   return await new jose.SignJWT({

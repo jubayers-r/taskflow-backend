@@ -22,11 +22,12 @@ const login = async (
       passwordHash: true,
       isActive: true,
       isRestricted: true,
+      deletedAt: true,
     },
   });
 
-  if (!user || user.isRestricted || !user.isActive) {
-    throw new Error('INVALID_CREDENTIALS');
+  if (!user || user.isRestricted || !user.isActive || user.deletedAt) {
+    throw new Error('USER_UNAUTHORIZED');
   }
 
   const isValid = await bcrypt.compare(password, user.passwordHash);
