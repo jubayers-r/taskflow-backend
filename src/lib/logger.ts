@@ -9,7 +9,33 @@ export const logger = pino({
       : undefined,
   base: { service: 'taskflow' },
   timestamp: pino.stdTimeFunctions.isoTime,
-  redact: ['req.headers.authorization', 'password', 'token', 'secret'],
+  redact: [
+    // Headers & Auth
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'req.headers["x-api-key"]',
+
+    // Passwords & Hashes
+    '*.password',
+    '*.passwordHash',
+    '*.confirmPassword',
+
+    // Tokens & Sessions
+    '*.token',
+    '*.tokenHash',
+    '*.refreshToken',
+    '*.accessToken',
+    '*.fcmToken',
+
+    // OTP & Verification
+    '*.code',
+    '*.codeHash',
+    '*.otp',
+
+    // Sensitive Payment & Billing
+    '*.rawResponse',
+    '*.secret',
+  ],
   formatters: {
     level: (label) => ({ level: label }),
   },

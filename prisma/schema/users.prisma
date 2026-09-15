@@ -19,10 +19,11 @@ model User {
     comments     Comment[]
     attachments  Attachment[]
     activityLogs ActivityLog[]
-    agency       Agency        @relation(fields: [agencyId], references: [id])
-    agencyId     String
+    agency       Agency?       @relation(fields: [agencyId], references: [id])
+    agencyId     String?
     tasks        Task[]
 
+    deletedAt       DateTime? // Soft delete
     createdAt       DateTime       @default(now())
     updatedAt       DateTime       @updatedAt
     sentInvitations Invitation[]   @relation("SentInvitations")
@@ -42,6 +43,7 @@ model Session {
     ipAddress    String?
     lastActiveAt DateTime  @default(now())
     revokedAt    DateTime? // Revoking the session kills all rotated tokens in it
+    expiresAt    DateTime // Sessions expire after a certain time
 
     user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
     refreshTokens RefreshToken[]
@@ -49,7 +51,8 @@ model Session {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    @@index([userId])
+    @@index([userId, revokedAt])
+    @@index([expiresAt])
     @@map("sessions")
 }
 
@@ -87,8 +90,9 @@ model OTP {
     userId String? // Optional if sending OTP to non-users (like guest signup)
     user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    lastSentAt DateTime @default(now())
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
 
     @@index([identifier, consumedAt])
     @@index([identifier, purpose, consumedAt])
