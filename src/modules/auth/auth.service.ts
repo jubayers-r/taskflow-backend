@@ -55,6 +55,7 @@ const login = async (
         fcmToken: fcmToken ?? null,
         userAgent: meta.userAgent,
         ipAddress: meta.ip,
+        expiresAt: sessionExpiresAt,
         refreshTokens: {
           create: {
             tokenHash,
