@@ -3,7 +3,7 @@ import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
 import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
-import { AuthServices } from './auth.service';
+import { AuthService } from './auth.service';
 
 const REFRESH_COOKIE_NAME = 'jid';
 const AUTH_COOKIE_PATH = '/api/v1/auth';
@@ -27,7 +27,7 @@ const extractClientMeta = (req: Request) => {
 
 const registerHandler = catchAsync(async (req: Request, res: Response) => {
   const meta = extractClientMeta(req);
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.register(req.body, meta);
+  const { accessToken, refreshToken, expiresAt } = await AuthService.register(req.body, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
@@ -38,13 +38,21 @@ const registerHandler = catchAsync(async (req: Request, res: Response) => {
 
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
   const meta = extractClientMeta(req);
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.login(req.body, meta);
+  const { accessToken, refreshToken, expiresAt } = await AuthService.login(req.body, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
   req.log?.info({ email: req.body.email }, 'User logged in successfully');
   return sendResponse.ok(res, 'User logged in successfully', { accessToken });
+});
+
+const verifyOtpHandler = catchAsync(async (req: Request, res: Response) => {
+  const meta = extractClientMeta(req);
+
+  const result = await AuthService.verifyOtpAndCompleteAction(req.body, meta);
+
+  return sendResponse.ok(res, 'Verification successful', result);
 });
 
 const refreshHandler = catchAsync(async (req: Request, res: Response) => {
@@ -54,7 +62,7 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
   }
 
   const meta = extractClientMeta(req);
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.refreshTokens(token, meta);
+  const { accessToken, refreshToken, expiresAt } = await AuthService.refreshTokens(token, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
@@ -65,7 +73,7 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
 const logoutHandler = catchAsync(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE_NAME];
   if (token) {
-    await AuthServices.logout(token);
+    await AuthService.logout(token);
   }
 
   res.clearCookie(REFRESH_COOKIE_NAME, {
@@ -81,6 +89,7 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
 
 export const AuthController = {
   registerHandler,
+  verifyOtpHandler,
   loginHandler,
   refreshHandler,
   logoutHandler,

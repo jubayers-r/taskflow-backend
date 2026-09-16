@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { AuthInputType } from './auth.schema';
 import { AuthUtils } from './auth.utils';
+import { OtpService } from './otp.service';
 
 export interface ClientMeta {
   ip?: string;
@@ -84,6 +85,72 @@ const register = async (payload: AuthInputType['registerPayload'], meta: ClientM
     refreshToken,
     expiresAt: sessionExpiresAt,
   };
+};
+
+const verifyOtpAndCompleteAction = async (
+  payload: AuthInputType['verifyOtpPayload'],
+  meta: ClientMeta,
+) => {
+  const { email, code, purpose } = payload;
+
+  // 1. Verify code validity, attempt count, and expiration
+  await OtpService.verifyOtp(email, purpose, code);
+
+  // 2. Branch according to the business intent
+  switch (purpose) {
+    case 'VERIFY_EMAIL': {
+      const user = await prisma.user.update({
+        where: { email },
+        data: {
+          emailVerifiedAt: new Date(),
+          isActive: true,
+          isRestricted: false,
+        },
+      });
+
+      // Automatically log them in (create active session)
+      const sessionDays = 7;
+      const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
+      const sessionId = crypto.randomUUID();
+      const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
+
+      await prisma.session.create({
+        data: {
+          id: sessionId,
+          userId: user.id,
+          userAgent: meta.userAgent ?? null,
+          ipAddress: meta.ip ?? null,
+          expiresAt: sessionExpiresAt,
+          refreshTokens: {
+            create: {
+              tokenHash,
+              expiresAt: sessionExpiresAt,
+              isUsed: false,
+            },
+          },
+        },
+      });
+
+      const accessToken = await AuthUtils.signAccessToken({
+        userId: user.id,
+        role: user.role,
+        agencyId: user.agencyId,
+        sessionId,
+      });
+
+      return { user, accessToken, refreshToken, expiresAt: sessionExpiresAt };
+    }
+
+    case 'PASSWORD_RESET': {
+      // Return a short-lived, single-use token authorizing the actual reset form
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      // Store token hash in redis/DB with a 15-minute TTL to authorize POST /auth/reset-password
+      return { resetToken };
+    }
+
+    default:
+      return { verified: true };
+  }
 };
 
 // ==========================================
@@ -303,8 +370,9 @@ const logout = async (incomingRefreshToken: string) => {
   }
 };
 
-export const AuthServices = {
+export const AuthService = {
   register,
+  verifyOtpAndCompleteAction,
   login,
   refreshTokens,
   logout,

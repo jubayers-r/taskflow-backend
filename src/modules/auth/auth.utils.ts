@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import * as jose from 'jose';
 
 const ACCESS_SECRET = new TextEncoder().encode(process.env.JWT_ACCESS_SECRET!);
+const OTP_PEPPER = process.env.OTP_PEPPER_SECRET || 'fallback-pepper-key-min-32-chars';
 
 interface AccessTokenPayload extends jose.JWTPayload {
   sub: string;
@@ -52,10 +53,30 @@ const parseCompoundToken = (compoundToken: string): { sessionId: string; rawSecr
   return { sessionId: parts[0], rawSecret: parts[1] };
 };
 
+// OTP Utils
+const generateOtpCode = (): string => {
+  return crypto.randomInt(100000, 1000000).toString();
+};
+
+const hashOtp = (code: string): string => {
+  return crypto.createHmac('sha256', OTP_PEPPER).update(code).digest('hex');
+};
+
+const verifyOtpHash = (rawOtp: string, storedHash: string): boolean => {
+  const computedHash = hashOtp(rawOtp);
+  const bufA = Buffer.from(computedHash, 'hex');
+  const bufB = Buffer.from(storedHash, 'hex');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+};
+
 export const AuthUtils = {
   signAccessToken,
   verifyAccessToken,
   generateOpaqueRefreshToken,
   hashToken,
   parseCompoundToken,
+  generateOtpCode,
+  hashOtp,
+  verifyOtpHash,
 };

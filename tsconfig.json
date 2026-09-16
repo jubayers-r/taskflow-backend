@@ -29,6 +29,9 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
 
+    // email templates
+    "jsx": "react-jsx",
+
     // Path Aliases (All inside src)
     "paths": {
       "@/*": ["./src/*"],

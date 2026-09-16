@@ -27,6 +27,10 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   SALT_ROUNDS: z.coerce.number().int().min(1).default(10),
+
+  // Email config
+  EMAIL_FROM: z.string().min(1),
+  RESEND_API_KEY: z.string().min(1),
 });
 
 const _env = envSchema.safeParse(process.env);

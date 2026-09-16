@@ -14,7 +14,7 @@ model User {
     isAgreeWithTerms Boolean   @default(false)
     termsAgreedAt    DateTime?
     emailVerifiedAt  DateTime?
-    otps             OTP[] // Added relation link
+    otps             Otp[] // Added relation link
 
     comments     Comment[]
     attachments  Attachment[]
@@ -72,7 +72,7 @@ model RefreshToken {
     @@map("refresh_tokens")
 }
 
-model OTP {
+model Otp {
     id         String     @id @default(uuid())
     identifier String
     codeHash   String

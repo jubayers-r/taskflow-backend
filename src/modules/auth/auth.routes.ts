@@ -14,6 +14,12 @@ router.post(
 );
 
 router.post(
+  '/verify-email',
+  validateRequest({ body: AuthSchema.verifyOtpSchema }),
+  AuthController.verifyOtpHandler,
+);
+
+router.post(
   '/login',
   validateRequest({ body: AuthSchema.loginSchema }),
   AuthController.loginHandler,
@@ -22,4 +28,4 @@ router.post(
 router.post('/refresh', AuthController.refreshHandler);
 router.post('/logout', AuthController.logoutHandler);
 
-export const authRoutes = router;
+export const AuthRoutes = router;
