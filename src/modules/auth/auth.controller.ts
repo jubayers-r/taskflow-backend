@@ -6,6 +6,19 @@ import catchAsync from '@/utils/catchAsync';
 import { Request, Response } from 'express';
 import { AuthServices } from './auth.service';
 
+const registerHandler = catchAsync(async (req: Request, res: Response) => {
+  const { accessToken, refreshToken, expiresAt } = await AuthServices.register(
+    req.body,
+    req.clientMeta,
+  );
+
+  const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
+
+  req.log.info({ email: req.body.email }, 'User registered successfully');
+  return sendResponse.ok(res, 'User registered successfully', { accessToken });
+});
+
 const REFRESH_COOKIE_NAME = 'jid';
 
 const getCookieOptions = (maxAge: number) => ({
@@ -33,8 +46,10 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
     throw AppError.unauthorized('Refresh token not found');
   }
 
-  const meta = { ip: req.ip, userAgent: req.headers['user-agent'] };
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.refreshTokens(token, meta);
+  const { accessToken, refreshToken, expiresAt } = await AuthServices.refreshTokens(
+    token,
+    req.clientMeta,
+  );
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
@@ -55,6 +70,7 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const AuthController = {
+  registerHandler,
   loginHandler,
   refreshHandler,
   logoutHandler,

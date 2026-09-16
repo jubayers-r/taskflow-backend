@@ -3,13 +3,13 @@ model User {
     email        String     @unique
     passwordHash String
     firstName    String
-    lastName     String
+    lastName     String?
     gender       GenderEnum
     profileImage String?    @default("https://img.icons8.com/?size=256&id=85050&format=png")
     role         UserRole   @default(MEMBER)
 
-    isActive     Boolean @default(true)
-    isRestricted Boolean @default(false)
+    isActive     Boolean @default(false)
+    isRestricted Boolean @default(true)
 
     isAgreeWithTerms Boolean   @default(false)
     termsAgreedAt    DateTime?
