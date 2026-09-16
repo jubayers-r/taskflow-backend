@@ -1,3 +1,4 @@
+// auth.service.ts
 import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/response/AppError';
 import bcrypt from 'bcrypt';
@@ -5,22 +6,17 @@ import crypto from 'crypto';
 import { AuthInputType } from './auth.schema';
 import { AuthUtils } from './auth.utils';
 
+export interface ClientMeta {
+  ip?: string;
+  userAgent?: string;
+}
+
 // ==========================================
 // 1. REGISTER
 // ==========================================
-const register = async (
-  payload: AuthInputType['registerPayload'],
-  meta: { ip?: string; userAgent?: string },
-) => {
+const register = async (payload: AuthInputType['registerPayload'], meta: ClientMeta) => {
   const { email, password, firstName, lastName, gender, profileImage, agencyId, isAgreeWithTerms } =
     payload;
-
-  if (!isAgreeWithTerms) {
-    throw AppError.badRequest('You must agree with the terms and conditions');
-  }
-  if (!email || !password || !firstName) {
-    throw AppError.badRequest('All fields are required');
-  }
 
   // Check email collision
   const existingUser = await prisma.user.findUnique({
@@ -37,9 +33,9 @@ const register = async (
   const sessionId = crypto.randomUUID();
   const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12); // standard bcrypt work factor
 
-  // Atomic user + session creation in ONE transaction
+  // Atomic user + session creation in one transaction
   const user = await prisma.$transaction(async (tx) => {
     const newUser = await tx.user.create({
       data: {
@@ -93,10 +89,7 @@ const register = async (
 // ==========================================
 // 2. LOGIN
 // ==========================================
-const login = async (
-  payload: AuthInputType['loginPayload'],
-  meta: { ip?: string; userAgent?: string },
-) => {
+const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) => {
   const { email, password, fcmToken, rememberMe } = payload;
 
   const user = await prisma.user.findUnique({
@@ -114,7 +107,13 @@ const login = async (
     },
   });
 
+  // Use uniform response for security (prevent email enumeration)
   if (!user || user.deletedAt) {
+    throw AppError.unauthorized('Invalid email or password');
+  }
+
+  const isValid = await bcrypt.compare(password, user.passwordHash);
+  if (!isValid) {
     throw AppError.unauthorized('Invalid email or password');
   }
 
@@ -124,11 +123,6 @@ const login = async (
 
   if (user.isRestricted || !user.isActive) {
     throw AppError.forbidden('Your account is inactive or restricted');
-  }
-
-  const isValid = await bcrypt.compare(password, user.passwordHash);
-  if (!isValid) {
-    throw AppError.unauthorized('Invalid email or password');
   }
 
   const sessionDays = rememberMe ? 30 : 1;
@@ -181,10 +175,7 @@ const login = async (
 // ==========================================
 // 3. REFRESH TOKENS (RTR)
 // ==========================================
-const refreshTokens = async (
-  incomingRefreshToken: string,
-  meta: { ip?: string; userAgent?: string },
-) => {
+const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => {
   let sessionId: string;
   let rawSecret: string;
 
@@ -226,7 +217,7 @@ const refreshTokens = async (
 
   const currentTokenRecord = session.refreshTokens[0];
 
-  // Breach Detection: Reuse of already used token
+  // Breach Detection: Reuse of already used token triggers full session kill
   if (!currentTokenRecord || currentTokenRecord.isUsed) {
     await prisma.session.update({
       where: { id: sessionId },
@@ -248,6 +239,7 @@ const refreshTokens = async (
 
   const expiresAt = currentTokenRecord.expiresAt;
 
+  // Rotate token atomically
   await prisma.$transaction([
     prisma.refreshToken.update({
       where: { id: currentTokenRecord.id },
@@ -302,7 +294,7 @@ const logout = async (incomingRefreshToken: string) => {
         },
       }),
       prisma.refreshToken.updateMany({
-        where: { tokenHash },
+        where: { sessionId, tokenHash },
         data: { isUsed: true },
       }),
     ]);

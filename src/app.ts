@@ -5,9 +5,9 @@ import helmet from 'helmet';
 import path from 'path';
 import { env } from './config';
 
-import { errorHandler } from './middlewares/errorHandler';
-import { notFoundHandler } from './middlewares/notFoundHandler';
-import { requestIdMiddleware } from './middlewares/requestId';
+import { errorHandler } from './middlewares/errorHandler.middleware';
+import { notFoundHandler } from './middlewares/notFoundHandler.middleware';
+import { requestIdMiddleware } from './middlewares/requestId.middleware';
 import Routes from './routes';
 
 const app: Application = express();

@@ -1,55 +1,60 @@
 // auth.controller.ts
-
 import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
 import catchAsync from '@/utils/catchAsync';
-import { Request, Response } from 'express';
+import { CookieOptions, Request, Response } from 'express';
 import { AuthServices } from './auth.service';
 
-const registerHandler = catchAsync(async (req: Request, res: Response) => {
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.register(
-    req.body,
-    req.clientMeta,
+const REFRESH_COOKIE_NAME = 'jid';
+const AUTH_COOKIE_PATH = '/api/v1/auth';
+
+const getCookieOptions = (maxAgeMs: number): CookieOptions => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: AUTH_COOKIE_PATH,
+  maxAge: maxAgeMs,
+});
+
+const extractClientMeta = (req: Request) => {
+  return (
+    req.clientMeta ?? {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    }
   );
+};
+
+const registerHandler = catchAsync(async (req: Request, res: Response) => {
+  const meta = extractClientMeta(req);
+  const { accessToken, refreshToken, expiresAt } = await AuthServices.register(req.body, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
-  req.log.info({ email: req.body.email }, 'User registered successfully');
+  req.log?.info({ email: req.body.email }, 'User registered successfully');
   return sendResponse.ok(res, 'User registered successfully', { accessToken });
 });
 
-const REFRESH_COOKIE_NAME = 'jid';
-
-const getCookieOptions = (maxAge: number) => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  path: '/api/v1/auth',
-  maxAge,
-});
-
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
-  const meta = { ip: req.ip, userAgent: req.headers['user-agent'] };
+  const meta = extractClientMeta(req);
   const { accessToken, refreshToken, expiresAt } = await AuthServices.login(req.body, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
-  req.log.info({ email: req.body.email }, 'User logged in successfully');
+  req.log?.info({ email: req.body.email }, 'User logged in successfully');
   return sendResponse.ok(res, 'User logged in successfully', { accessToken });
 });
 
 const refreshHandler = catchAsync(async (req: Request, res: Response) => {
-  const token = req.cookies[REFRESH_COOKIE_NAME];
+  const token = req.cookies?.[REFRESH_COOKIE_NAME];
   if (!token) {
     throw AppError.unauthorized('Refresh token not found');
   }
 
-  const { accessToken, refreshToken, expiresAt } = await AuthServices.refreshTokens(
-    token,
-    req.clientMeta,
-  );
+  const meta = extractClientMeta(req);
+  const { accessToken, refreshToken, expiresAt } = await AuthServices.refreshTokens(token, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
@@ -58,14 +63,19 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
 });
 
 const logoutHandler = catchAsync(async (req: Request, res: Response) => {
-  const token = req.cookies[REFRESH_COOKIE_NAME];
+  const token = req.cookies?.[REFRESH_COOKIE_NAME];
   if (token) {
     await AuthServices.logout(token);
   }
 
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/v1/auth' });
-  req.log.info('User logged out');
+  res.clearCookie(REFRESH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: AUTH_COOKIE_PATH,
+  });
 
+  req.log?.info('User logged out');
   return sendResponse.ok(res, 'Logged out successfully');
 });
 
