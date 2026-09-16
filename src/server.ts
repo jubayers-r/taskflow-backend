@@ -3,8 +3,9 @@ const startTime = performance.now();
 import http from 'http';
 import app from './app';
 import { env } from './config';
-import { shutdown } from './lib/gracefulShutdown';
+
 import { logger } from './lib/logger';
+import { shutdown } from './utils/gracefulShutdown';
 
 const server = http.createServer(app);
 

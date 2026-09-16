@@ -1,6 +1,6 @@
+import { logger } from '@/lib/logger';
+import { prisma } from '@/lib/prisma';
 import server from '@/server';
-import { logger } from './logger';
-import { prisma } from './prisma';
 
 export async function shutdown() {
   logger.info('Shutdown signal received');
