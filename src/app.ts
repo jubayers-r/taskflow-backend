@@ -66,6 +66,27 @@ if (emailBullQueue) {
 // OpenAPI document and Scalar API reference UI
 const openApiDocument = buildOpenApiDocument();
 app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
+
+// Scalar loads its bundle from a CDN and ships an inline init script, so the
+// default helmet CSP (`script-src 'self'`) would blank the page. Relax it for
+// this read-only route only, leaving the strict policy everywhere else.
+const docsContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline' https:",
+  "img-src 'self' data: https:",
+  "font-src 'self' https: data:",
+  "worker-src 'self' blob: https://cdn.jsdelivr.net",
+  "connect-src 'self' https://cdn.jsdelivr.net",
+  "object-src 'none'",
+  "base-uri 'self'",
+].join('; ');
+
+app.use('/docs', (_req, res, next) => {
+  res.setHeader('Content-Security-Policy', docsContentSecurityPolicy);
+  next();
+});
+
 app.use('/docs', apiReference({ url: '/openapi.json' }));
 
 //global API not found middleware

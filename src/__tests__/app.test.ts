@@ -53,5 +53,8 @@ describe('app', () => {
     const docs = await request(app).get('/docs');
     expect(docs.status).toBe(200);
     expect(docs.headers['content-type']).toContain('text/html');
+    // Scalar's CDN bundle and inline init script must survive the helmet CSP.
+    expect(docs.headers['content-security-policy']).toContain('https://cdn.jsdelivr.net');
+    expect(docs.headers['content-security-policy']).toContain("'unsafe-inline'");
   });
 });
