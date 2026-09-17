@@ -31,9 +31,12 @@ const envSchema = z
 
     JWT_ACCESS_SECRET: z.string().min(1),
     JWT_REFRESH_SECRET: z.string().min(1),
-    JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
+    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
     JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-    SALT_ROUNDS: z.coerce.number().int().min(1).default(10),
+    SALT_ROUNDS: z.coerce.number().int().min(1).default(12),
+
+    // OTP
+    OTP_PEPPER_SECRET: z.string().min(32, 'OTP_PEPPER_SECRET must be at least 32 characters'),
 
     // Email config
     EMAIL_PROVIDER: z.enum(['gmail', 'resend']).default('gmail'),

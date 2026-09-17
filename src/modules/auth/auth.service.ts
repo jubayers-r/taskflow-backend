@@ -16,7 +16,7 @@ export interface ClientMeta {
   userAgent?: string;
 }
 
-const SALT_ROUNDS = Number(env.SALT_ROUNDS) || 12;
+const SALT_ROUNDS = env.SALT_ROUNDS;
 
 // ==========================================
 // 1. REGISTER

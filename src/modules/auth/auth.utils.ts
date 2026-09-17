@@ -1,8 +1,9 @@
+import { env } from '@/config';
 import crypto from 'crypto';
 import * as jose from 'jose';
 
-const ACCESS_SECRET = new TextEncoder().encode(process.env.JWT_ACCESS_SECRET!);
-const OTP_PEPPER = process.env.OTP_PEPPER_SECRET || 'fallback-pepper-key-min-32-chars';
+const ACCESS_SECRET = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
+const OTP_PEPPER = env.OTP_PEPPER_SECRET;
 
 interface AccessTokenPayload extends jose.JWTPayload {
   sub: string;
@@ -24,7 +25,7 @@ const signAccessToken = async (payload: {
     .setSubject(payload.userId)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('15m')
+    .setExpirationTime(env.JWT_ACCESS_EXPIRES_IN)
     .sign(ACCESS_SECRET);
 };
 
