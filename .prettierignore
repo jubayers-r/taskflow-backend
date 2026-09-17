@@ -22,12 +22,21 @@ coverage
 .hg
 .cache
 
+# Agent / tooling assets (vendored documentation)
+.agents
+.opencode
+
+# Prisma generated client
+prisma/generated
+src/prisma/generated
+
 # Logs & temporary runtime files
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+bun.lock
 bun.lockb
 
 # Generated lockfiles (handled by package managers)

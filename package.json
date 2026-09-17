@@ -9,15 +9,16 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "lint:check": "eslint --ignore-path .eslintignore --ext .js,.ts .",
+    "lint:check": "eslint .",
     "lint:fix": "eslint . --fix",
-    "prettier:check": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
+    "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
-    "lint-prettier": "yarn lint:check && yarn prettier:check",
+    "lint-prettier": "bun run lint:check && bun run prettier:check",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/bun": "^1.4.0",
     "@types/cookie-parser": "^1.4.10",
@@ -28,7 +29,10 @@
     "@types/pg": "^8.23.1",
     "@types/pino": "^7.0.5",
     "eslint": "^10.9.0",
-    "prisma": "^7.9.1"
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.8",
+    "prisma": "^7.9.1",
+    "typescript-eslint": "^8.70.0"
   },
   "peerDependencies": {
     "typescript": "^5"
