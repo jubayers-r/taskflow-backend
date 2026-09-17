@@ -40,7 +40,7 @@ const sendResponse = <T>(res: Response, response: TResponse<T>) => {
 // --- Semantic Helpers (No Magic Status Codes) ---
 
 /** 200 OK */
-sendResponse.ok = <T>(res: Response, message = 'Request successful', data?: T) => {
+sendResponse.ok = <T>(res: Response, data?: T, message = 'Request successful') => {
   return sendResponse(res, {
     statusCode: httpStatus.OK,
     message,
@@ -49,7 +49,7 @@ sendResponse.ok = <T>(res: Response, message = 'Request successful', data?: T) =
 };
 
 /** 201 Created */
-sendResponse.created = <T>(res: Response, message = 'Resource created successfully', data?: T) => {
+sendResponse.created = <T>(res: Response, data?: T, message = 'Resource created successfully') => {
   return sendResponse(res, {
     statusCode: httpStatus.CREATED,
     message,
@@ -60,9 +60,9 @@ sendResponse.created = <T>(res: Response, message = 'Resource created successful
 /** 200 OK with Pagination Metadata */
 sendResponse.paginated = <T>(
   res: Response,
-  message = 'Data retrieved successfully',
   data: T,
   meta: PaginationMeta,
+  message = 'Data retrieved successfully',
 ) => {
   return sendResponse(res, {
     statusCode: httpStatus.OK,

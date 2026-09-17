@@ -26,14 +26,10 @@ const extractClientMeta = (req: Request) => {
 };
 
 const registerHandler = catchAsync(async (req: Request, res: Response) => {
-  const meta = extractClientMeta(req);
-  const { accessToken, refreshToken, expiresAt } = await AuthService.register(req.body, meta);
-
-  const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
-  res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
+  const result = await AuthService.register(req.body);
 
   req.log?.info({ email: req.body.email }, 'User registered successfully');
-  return sendResponse.ok(res, 'User registered successfully', { accessToken });
+  return sendResponse.ok(res, result.user, result.message);
 });
 
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
@@ -44,7 +40,7 @@ const loginHandler = catchAsync(async (req: Request, res: Response) => {
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
   req.log?.info({ email: req.body.email }, 'User logged in successfully');
-  return sendResponse.ok(res, 'User logged in successfully', { accessToken });
+  return sendResponse.ok(res, { accessToken }, 'User logged in successfully');
 });
 
 const verifyOtpHandler = catchAsync(async (req: Request, res: Response) => {
@@ -52,7 +48,7 @@ const verifyOtpHandler = catchAsync(async (req: Request, res: Response) => {
 
   const result = await AuthService.verifyOtpAndCompleteAction(req.body, meta);
 
-  return sendResponse.ok(res, 'Verification successful', result);
+  return sendResponse.ok(res, result, 'Verification successful');
 });
 
 const refreshHandler = catchAsync(async (req: Request, res: Response) => {
@@ -67,7 +63,7 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
-  return sendResponse.ok(res, 'Token refreshed successfully', { accessToken });
+  return sendResponse.ok(res, { accessToken }, 'Token refreshed successfully');
 });
 
 const logoutHandler = catchAsync(async (req: Request, res: Response) => {
@@ -84,7 +80,7 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
   });
 
   req.log?.info('User logged out');
-  return sendResponse.ok(res, 'Logged out successfully');
+  return sendResponse.ok(res, null, 'Logged out successfully');
 });
 
 export const AuthController = {

@@ -1,4 +1,5 @@
 // otp.service.ts
+import { env } from '@/config';
 import { prisma } from '@/lib/prisma';
 import { emailQueue } from '@/lib/queue';
 import { AppError } from '@/lib/response/AppError';
@@ -44,6 +45,10 @@ const sendOtp = async (
       userAgent: meta?.userAgent,
     },
   });
+
+  if (env.NODE_ENV === 'development') {
+    return { success: true, code: rawCode };
+  }
 
   await emailQueue.add('send-otp', {
     email: identifier,

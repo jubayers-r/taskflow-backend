@@ -1,6 +1,8 @@
 // auth.service.ts
+import { env } from '@/config';
 import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/response/AppError';
+import { Prisma } from '@/prisma/generated/client';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { AuthInputType } from './auth.schema';
@@ -15,31 +17,37 @@ export interface ClientMeta {
 // ==========================================
 // 1. REGISTER
 // ==========================================
-const register = async (payload: AuthInputType['registerPayload'], meta: ClientMeta) => {
+const register = async (payload: AuthInputType['registerPayload']) => {
   const { email, password, firstName, lastName, gender, profileImage, agencyId, isAgreeWithTerms } =
     payload;
 
   // Check email collision
   const existingUser = await prisma.user.findUnique({
     where: { email },
-    select: { id: true },
+    select: { id: true, emailVerifiedAt: true },
   });
 
-  if (existingUser) {
+  if (existingUser && existingUser.emailVerifiedAt) {
     throw AppError.conflict('An account with this email already exists');
   }
 
-  const sessionDays = 7;
-  const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
-  const sessionId = crypto.randomUUID();
-  const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
-
   const passwordHash = await bcrypt.hash(password, 12); // standard bcrypt work factor
 
-  // Atomic user + session creation in one transaction
-  const user = await prisma.$transaction(async (tx) => {
-    const newUser = await tx.user.create({
-      data: {
+  let user;
+
+  try {
+    user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        passwordHash,
+        firstName,
+        lastName,
+        gender,
+        profileImage,
+        agencyId: agencyId ?? null,
+        isAgreeWithTerms,
+      },
+      create: {
         email,
         passwordHash,
         firstName,
@@ -51,39 +59,39 @@ const register = async (payload: AuthInputType['registerPayload'], meta: ClientM
         isActive: true,
         isRestricted: false,
       },
-    });
-
-    await tx.session.create({
-      data: {
-        id: sessionId,
-        userId: newUser.id,
-        userAgent: meta.userAgent ?? null,
-        ipAddress: meta.ip ?? null,
-        expiresAt: sessionExpiresAt,
-        refreshTokens: {
-          create: {
-            tokenHash,
-            expiresAt: sessionExpiresAt,
-            isUsed: false,
-          },
-        },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
       },
     });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw AppError.conflict('An account with this email already exists');
+    }
+    throw error;
+  }
 
-    return newUser;
-  });
+  let otp;
+  let otpSent = true;
+  try {
+    otp = await OtpService.sendOtp(email, 'VERIFY_EMAIL');
+  } catch (error) {
+    console.error('Failed to send OTP on register:', error);
+    otpSent = false;
+  }
 
-  const accessToken = await AuthUtils.signAccessToken({
-    userId: user.id,
-    role: user.role,
-    agencyId: user.agencyId,
-    sessionId,
-  });
+  if (env.NODE_ENV === 'development') {
+    return { user, otpSent: false, otp: `Account created. OTP: ${otp!.code}` };
+  }
 
   return {
-    accessToken,
-    refreshToken,
-    expiresAt: sessionExpiresAt,
+    user,
+    otpSent,
+    message: otpSent
+      ? 'Account created. Please check your email for your verification code.'
+      : 'Account created, but we could not deliver the verification code. Please click "Resend Code".',
   };
 };
 
@@ -91,45 +99,59 @@ const verifyOtpAndCompleteAction = async (
   payload: AuthInputType['verifyOtpPayload'],
   meta: ClientMeta,
 ) => {
-  const { email, code, purpose } = payload;
+  const { code, purpose } = payload;
+  const email = payload.email.trim().toLowerCase();
 
   // 1. Verify code validity, attempt count, and expiration
+  // (Throws an AppError if invalid or expired)
   await OtpService.verifyOtp(email, purpose, code);
 
-  // 2. Branch according to the business intent
+  // 2. Branch according to intent
   switch (purpose) {
     case 'VERIFY_EMAIL': {
-      const user = await prisma.user.update({
-        where: { email },
-        data: {
-          emailVerifiedAt: new Date(),
-          isActive: true,
-          isRestricted: false,
-        },
-      });
-
-      // Automatically log them in (create active session)
       const sessionDays = 7;
       const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
       const sessionId = crypto.randomUUID();
       const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
-      await prisma.session.create({
-        data: {
-          id: sessionId,
-          userId: user.id,
-          userAgent: meta.userAgent ?? null,
-          ipAddress: meta.ip ?? null,
-          expiresAt: sessionExpiresAt,
-          refreshTokens: {
-            create: {
-              tokenHash,
-              expiresAt: sessionExpiresAt,
-              isUsed: false,
+      // Perform user status update and session creation in a single atomic transaction
+      let user;
+      try {
+        user = await prisma.$transaction(async (tx) => {
+          const updatedUser = await tx.user.update({
+            where: { email },
+            data: {
+              emailVerifiedAt: new Date(),
+              isActive: true,
+              isRestricted: false,
             },
-          },
-        },
-      });
+          });
+
+          await tx.session.create({
+            data: {
+              id: sessionId,
+              userId: updatedUser.id,
+              userAgent: meta.userAgent ?? null,
+              ipAddress: meta.ip ?? null,
+              expiresAt: sessionExpiresAt,
+              refreshTokens: {
+                create: {
+                  tokenHash,
+                  expiresAt: sessionExpiresAt,
+                  isUsed: false,
+                },
+              },
+            },
+          });
+
+          return updatedUser;
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          throw AppError.notFound('Account not found');
+        }
+        throw error;
+      }
 
       const accessToken = await AuthUtils.signAccessToken({
         userId: user.id,
@@ -138,15 +160,29 @@ const verifyOtpAndCompleteAction = async (
         sessionId,
       });
 
-      return { user, accessToken, refreshToken, expiresAt: sessionExpiresAt };
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          agencyId: user.agencyId,
+        },
+        accessToken,
+        refreshToken,
+        expiresAt: sessionExpiresAt,
+      };
     }
 
-    case 'PASSWORD_RESET': {
-      // Return a short-lived, single-use token authorizing the actual reset form
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      // Store token hash in redis/DB with a 15-minute TTL to authorize POST /auth/reset-password
-      return { resetToken };
-    }
+    // case 'PASSWORD_RESET': {
+    //   const resetToken = crypto.randomBytes(32).toString('hex');
+    //   const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    //   // Store resetTokenHash in Redis/DB with 15-minute TTL
+    //   // e.g.: await redis.set(`pwd-reset:${resetTokenHash}`, email, 'EX', 15 * 60);
+    //   await PasswordResetService.saveResetTokenHash(email, resetTokenHash, 15 * 60);
+
+    //   return { resetToken };
+    // }
 
     default:
       return { verified: true };
