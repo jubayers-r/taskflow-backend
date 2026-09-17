@@ -76,7 +76,7 @@ const forgotPasswordHandler = catchAsync(async (req: Request, res: Response) => 
 const resetPasswordHandler = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.resetPassword(req.body);
 
-  req.log?.info({ email: req.body.email }, 'User reset password');
+  req.log?.info('User reset password');
   return sendResponse.ok(res, result, 'Password reset successfully');
 });
 
