@@ -50,10 +50,13 @@ const sendOtp = async (
     return { success: true, code: rawCode };
   }
 
-  await emailQueue.add('send-otp', {
-    email: identifier,
-    code: rawCode,
-    purpose,
+  await emailQueue.add({
+    name: 'send-otp',
+    data: {
+      email: identifier,
+      code: rawCode,
+      purpose,
+    },
   });
 
   return { success: true, cooldownSeconds: 60 };

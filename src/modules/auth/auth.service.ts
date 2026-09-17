@@ -1,8 +1,8 @@
 // auth.service.ts
 import { env } from '@/config';
+import { cache } from '@/lib/cache';
 import { prisma } from '@/lib/prisma';
 import { emailQueue } from '@/lib/queue';
-import { redis } from '@/lib/redis';
 import { AppError } from '@/lib/response/AppError';
 import { Prisma } from '@/prisma/generated/client';
 import bcrypt from 'bcrypt';
@@ -422,15 +422,15 @@ const forgotPassword = async (payload: AuthInputType['forgotPasswordPayload']) =
   const { rawToken, tokenHash } = AuthUtils.generateResetToken();
 
   // 15-minute TTL
-  await redis.set(`pwd-reset:${tokenHash}`, user.id, 'EX', 15 * 60);
+  await cache.set(`pwd-reset:${tokenHash}`, user.id, 15 * 60);
 
   if (env.NODE_ENV === 'development') {
     return { success: true, resetToken: rawToken };
   }
 
-  await emailQueue.add('send-password-reset', {
-    email: user.email,
-    resetToken: rawToken,
+  await emailQueue.add({
+    name: 'send-password-reset',
+    data: { email: user.email, resetToken: rawToken },
   });
 
   return { success: true };
@@ -443,7 +443,7 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
   const { token, newPassword } = payload;
 
   const tokenHash = AuthUtils.hashToken(token);
-  const userId = await redis.get(`pwd-reset:${tokenHash}`);
+  const userId = await cache.get(`pwd-reset:${tokenHash}`);
 
   if (!userId) {
     throw AppError.badRequest('Invalid or expired reset token');
@@ -463,7 +463,7 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
     }),
   ]);
 
-  await redis.del(`pwd-reset:${tokenHash}`);
+  await cache.del(`pwd-reset:${tokenHash}`);
 
   return { success: true };
 };
