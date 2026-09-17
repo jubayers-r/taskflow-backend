@@ -1,6 +1,7 @@
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
+import { apiReference } from '@scalar/express-api-reference';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Application } from 'express';
@@ -8,6 +9,7 @@ import helmet from 'helmet';
 import path from 'path';
 import { env } from './config';
 
+import { buildOpenApiDocument } from './lib/openapi';
 import { emailBullQueue } from './lib/queue';
 import { attachClientMeta } from './middlewares/clientMeta.middleware';
 import { errorHandler } from './middlewares/errorHandler.middleware';
@@ -60,6 +62,11 @@ if (emailBullQueue) {
 
   app.use('/admin/queues', serverAdapter.getRouter());
 }
+
+// OpenAPI document and Scalar API reference UI
+const openApiDocument = buildOpenApiDocument();
+app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
+app.use('/docs', apiReference({ url: '/openapi.json' }));
 
 //global API not found middleware
 app.use(notFoundHandler);
