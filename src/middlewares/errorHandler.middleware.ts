@@ -3,8 +3,8 @@ import { AppError } from '@/lib/response/AppError';
 import { NextFunction, Request, Response } from 'express';
 import { StatusCodes as httpStatus } from 'http-status-codes';
 
-export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
-  const requestId = res.locals.requestId;
+export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
+  const requestId = req.correlationId;
 
   // Handle expected operational errors thrown via AppError
   if (err instanceof AppError && err.isOperational) {

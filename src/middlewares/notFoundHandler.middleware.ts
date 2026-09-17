@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 
-export function notFoundHandler(req: Request, res: Response, next: NextFunction) {
-  const requestId = res.locals.requestId;
+export function notFoundHandler(req: Request, res: Response, _next: NextFunction) {
+  const requestId = req.correlationId;
 
   res.status(404).json({
     success: false,
