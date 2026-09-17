@@ -16,14 +16,7 @@ const getCookieOptions = (maxAgeMs: number): CookieOptions => ({
   maxAge: maxAgeMs,
 });
 
-const extractClientMeta = (req: Request) => {
-  return (
-    req.clientMeta ?? {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    }
-  );
-};
+const extractClientMeta = (req: Request) => req.clientMeta;
 
 const registerHandler = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.register(req.body);

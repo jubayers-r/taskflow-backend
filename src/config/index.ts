@@ -11,6 +11,8 @@ const envSchema = z
     PORT: z.string().default('5000'),
     DATABASE_URL: z.string().min(1),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    // Number of trusted reverse-proxy hops used to resolve the real client IP.
+    TRUST_PROXY: z.coerce.number().int().min(0).default(1),
 
     // Redis config
     // USE_REDIS=true  -> Redis-backed queue, rate limiter & cache

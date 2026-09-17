@@ -9,6 +9,7 @@ import path from 'path';
 import { env } from './config';
 
 import { emailBullQueue } from './lib/queue';
+import { attachClientMeta } from './middlewares/clientMeta.middleware';
 import { errorHandler } from './middlewares/errorHandler.middleware';
 import { apiLimiter } from './middlewares/rateLimiter.middleware';
 import { livenessHandler, readinessHandler } from './modules/health/health.controller';
@@ -19,11 +20,15 @@ import Routes from './routes';
 
 const app: Application = express();
 
+// Required for req.ip to resolve the real client behind a reverse proxy.
+app.set('trust proxy', env.TRUST_PROXY);
+
 app.use('/public', express.static(path.join(process.cwd(), 'public')));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestIdMiddleware);
+app.use(attachClientMeta);
 app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
 app.use(helmet());
 app.use(cookieParser());
