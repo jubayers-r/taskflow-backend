@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+
+.git
+.gitignore
+.github
+
+.env
+.env.*
+!.env.example
+
+.agents
+.opencode
+*.log

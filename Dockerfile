@@ -1,38 +1,35 @@
+# syntax=docker/dockerfile:1
+
 # ---------------------------------------
-# Stage 1: Build & Dependencies (Using Bun)
+# Stage 1: Install dependencies & generate the Prisma client
 # ---------------------------------------
-FROM oven/bun:alpine AS builder
+FROM oven/bun:1-alpine AS builder
 WORKDIR /app
 
-COPY package.json bun.lock* ./
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
+COPY prisma.config.ts ./
 COPY prisma ./prisma
-RUN bunx prisma generate
-
-COPY . .
-RUN bun build ./src/index.ts --target=node --outdir=./dist
+# Prisma's config reads DATABASE_URL at generation time; a syntactically valid
+# placeholder is enough because generating does not connect to the database.
+RUN DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma?schema=public" \
+  bunx prisma generate
 
 # ---------------------------------------
-# Stage 2: Production Runtime (Using Node)
+# Stage 2: Production runtime (Bun executes TypeScript directly)
 # ---------------------------------------
-FROM node:24-alpine AS runner
+FROM oven/bun:1-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package.json ./
-# Install only production dependencies
-RUN npm install --omit=dev --ignore-scripts
-
-# Copy Prisma schema and engines from builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/prisma.config.ts ./
+COPY package.json tsconfig.json ./
+COPY src ./src
 
-# Copy compiled JavaScript output
-COPY --from=builder /app/dist ./dist
-
-USER node
+USER bun
 EXPOSE 5000
 
-CMD ["node", "dist/index.js"]
+CMD ["bun", "run", "src/server.ts"]
