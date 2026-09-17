@@ -50,7 +50,14 @@ const forgotPasswordSchema = z
 const resetPasswordSchema = z
   .object({
     token: z.string('Token is required').trim(),
-    newPassword: z.string('New password is required').trim(),
+    newPassword: z
+      .string('New password is required')
+      .min(8, 'Password must be at least 8 characters')
+      .max(128, 'Password must not exceed 128 characters')
+      .regex(
+        passwordComplexityRegex,
+        'Password requires uppercase, lowercase, number, and special character',
+      ),
   })
   .strict();
 
