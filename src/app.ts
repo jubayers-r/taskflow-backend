@@ -10,6 +10,8 @@ import { env } from './config';
 
 import { emailBullQueue } from './lib/queue';
 import { errorHandler } from './middlewares/errorHandler.middleware';
+import { livenessHandler, readinessHandler } from './modules/health/health.controller';
+import { HealthRoutes } from './modules/health/health.routes';
 import { notFoundHandler } from './middlewares/notFoundHandler.middleware';
 import { requestIdMiddleware } from './middlewares/requestId.middleware';
 import Routes from './routes';
@@ -26,6 +28,19 @@ app.use(helmet());
 app.use(cookieParser());
 
 app.use('/api/v1', Routes);
+
+// Landing page: / redirects to the health dashboard
+app.get('/', (_req, res) => res.redirect('/health'));
+
+// Operational endpoints live at the root (unversioned) by convention.
+// /health        -> human-readable dashboard
+// /health/live   -> liveness probe  (process up, no deps)
+// /health/ready  -> readiness probe (database + Redis)
+app.use('/health', HealthRoutes);
+
+// Kubernetes-style aliases
+app.get('/healthz', livenessHandler);
+app.get('/readyz', readinessHandler);
 
 // Bull Board is only mounted when the queue is Redis-backed
 if (emailBullQueue) {
