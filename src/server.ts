@@ -6,13 +6,16 @@ import { env } from './config';
 
 import { logger } from './lib/logger';
 import { shutdown } from './utils/gracefulShutdown';
+import { startEmailWorker } from './workers/email.worker';
 
 const server = http.createServer(app);
 
-server.listen(env.PORT, async () => {
+server.listen(env.PORT, () => {
   const endTime = performance.now();
   const duration = (endTime - startTime).toFixed(2);
   logger.info(`Server is running on url: http://localhost:${env.PORT} (booted in ${duration}ms)`);
+
+  startEmailWorker();
 });
 
 process.on('SIGTERM', shutdown);
