@@ -13,11 +13,17 @@ const envSchema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
     // Redis config
-    REDIS_HOST: z.string().min(1),
+    // USE_REDIS=true  -> Redis-backed queue, rate limiter & cache
+    // USE_REDIS=false -> In-memory fallbacks (no Redis connection created)
+    USE_REDIS: z
+      .preprocess(
+        (val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val),
+        z.boolean(),
+      )
+      .default(false),
+    REDIS_HOST: z.string().min(1).optional(),
     REDIS_PORT: z.coerce.number().int().min(0).max(65535).default(6379),
     REDIS_PASSWORD: z.string().optional(),
-    USE_REDIS: z.coerce.boolean(),
-    REDIS_HOST_DEV: z.string().min(1).default('localhost'),
 
     ALLOWED_ORIGINS: z.string().transform((val) => val.split(',').map((origin) => origin.trim())),
 
@@ -38,6 +44,14 @@ const envSchema = z
 
   // SuperRefine: Enforce conditional email provider config
   .superRefine((data, ctx) => {
+    if (data.USE_REDIS && !data.REDIS_HOST) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'REDIS_HOST is required when USE_REDIS is enabled',
+        path: ['REDIS_HOST'],
+      });
+    }
+
     if (data.EMAIL_PROVIDER === 'gmail' && !data.GMAIL_APP_PASSWORD) {
       ctx.addIssue({
         code: 'custom',
