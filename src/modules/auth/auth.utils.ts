@@ -41,6 +41,12 @@ const generateOpaqueRefreshToken = (sessionId: string) => {
   return { rawSecret, tokenHash, refreshToken };
 };
 
+const generateResetToken = () => {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  return { rawToken, tokenHash };
+};
+
 const hashToken = (token: string): string => {
   return crypto.createHash('sha256').update(token).digest('hex');
 };
@@ -79,4 +85,5 @@ export const AuthUtils = {
   generateOtpCode,
   hashOtp,
   verifyOtpHash,
+  generateResetToken,
 };

@@ -66,6 +66,20 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
   return sendResponse.ok(res, { accessToken }, 'Token refreshed successfully');
 });
 
+const forgotPasswordHandler = catchAsync(async (req: Request, res: Response) => {
+  const result = await AuthService.forgotPassword(req.body);
+
+  req.log?.info({ email: req.body.email }, 'User forgot password');
+  return sendResponse.ok(res, result, 'Password reset email sent successfully');
+});
+
+const resetPasswordHandler = catchAsync(async (req: Request, res: Response) => {
+  const result = await AuthService.resetPassword(req.body);
+
+  req.log?.info({ email: req.body.email }, 'User reset password');
+  return sendResponse.ok(res, result, 'Password reset successfully');
+});
+
 const logoutHandler = catchAsync(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE_NAME];
   if (token) {
@@ -89,4 +103,6 @@ export const AuthController = {
   loginHandler,
   refreshHandler,
   logoutHandler,
+  forgotPasswordHandler,
+  resetPasswordHandler,
 };

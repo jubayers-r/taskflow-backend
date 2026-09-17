@@ -47,14 +47,34 @@ const verifyOtpSchema = z.object({
     .strict(),
 });
 
+const forgotPasswordSchema = z.object({
+  body: z
+    .object({
+      email: z.email('Email is required').trim().toLowerCase(),
+    })
+    .strict(),
+});
+
+const resetPasswordSchema = z.object({
+  body: z
+    .object({
+      token: z.string('Token is required').trim(),
+      newPassword: z.string('New password is required').trim(),
+    })
+    .strict(),
+});
 export const AuthSchema = {
   registerSchema,
   loginSchema,
   verifyOtpSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 };
 
 export type AuthInputType = {
   registerPayload: z.infer<typeof registerSchema>['body'];
   loginPayload: z.infer<typeof loginSchema>['body'];
   verifyOtpPayload: z.infer<typeof verifyOtpSchema>['body'];
+  forgotPasswordPayload: z.infer<typeof forgotPasswordSchema>['body'];
+  resetPasswordPayload: z.infer<typeof resetPasswordSchema>['body'];
 };

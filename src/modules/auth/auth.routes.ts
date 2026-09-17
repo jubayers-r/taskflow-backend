@@ -18,6 +18,16 @@ router.post(
   validateRequest({ body: AuthSchema.verifyOtpSchema }),
   AuthController.verifyOtpHandler,
 );
+router.post(
+  '/forgot-password',
+  validateRequest({ body: AuthSchema.forgotPasswordSchema }),
+  AuthController.forgotPasswordHandler,
+);
+router.post(
+  '/reset-password',
+  validateRequest({ body: AuthSchema.forgotPasswordSchema }),
+  AuthController.resetPasswordHandler,
+);
 
 router.post(
   '/login',

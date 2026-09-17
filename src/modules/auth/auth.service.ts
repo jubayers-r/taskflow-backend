@@ -1,6 +1,8 @@
 // auth.service.ts
 import { env } from '@/config';
 import { prisma } from '@/lib/prisma';
+import { emailQueue } from '@/lib/queue';
+import { redis } from '@/lib/redis';
 import { AppError } from '@/lib/response/AppError';
 import { Prisma } from '@/prisma/generated/client';
 import bcrypt from 'bcrypt';
@@ -14,6 +16,8 @@ export interface ClientMeta {
   userAgent?: string;
 }
 
+const SALT_ROUNDS = Number(env.SALT_ROUNDS) || 12;
+
 // ==========================================
 // 1. REGISTER
 // ==========================================
@@ -21,23 +25,24 @@ const register = async (payload: AuthInputType['registerPayload']) => {
   const { email, password, firstName, lastName, gender, profileImage, agencyId, isAgreeWithTerms } =
     payload;
 
-  // Check email collision
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Check existing verified user
   const existingUser = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
     select: { id: true, emailVerifiedAt: true },
   });
 
-  if (existingUser && existingUser.emailVerifiedAt) {
+  if (existingUser?.emailVerifiedAt) {
     throw AppError.conflict('An account with this email already exists');
   }
 
-  const passwordHash = await bcrypt.hash(password, 12); // standard bcrypt work factor
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   let user;
-
   try {
     user = await prisma.user.upsert({
-      where: { email },
+      where: { email: normalizedEmail },
       update: {
         passwordHash,
         firstName,
@@ -48,7 +53,7 @@ const register = async (payload: AuthInputType['registerPayload']) => {
         isAgreeWithTerms,
       },
       create: {
-        email,
+        email: normalizedEmail,
         passwordHash,
         firstName,
         lastName,
@@ -75,15 +80,20 @@ const register = async (payload: AuthInputType['registerPayload']) => {
 
   let otp;
   let otpSent = true;
+
   try {
-    otp = await OtpService.sendOtp(email, 'VERIFY_EMAIL');
+    otp = await OtpService.sendOtp(normalizedEmail, 'VERIFY_EMAIL');
   } catch (error) {
     console.error('Failed to send OTP on register:', error);
     otpSent = false;
   }
 
   if (env.NODE_ENV === 'development') {
-    return { user, otpSent: false, otp: `Account created. OTP: ${otp!.code}` };
+    return {
+      user,
+      otpSent,
+      otp: otp ? `Account created. OTP: ${otp.code}` : undefined,
+    };
   }
 
   return {
@@ -95,6 +105,9 @@ const register = async (payload: AuthInputType['registerPayload']) => {
   };
 };
 
+// ==========================================
+// 2. VERIFY OTP & COMPLETE ACTION
+// ==========================================
 const verifyOtpAndCompleteAction = async (
   payload: AuthInputType['verifyOtpPayload'],
   meta: ClientMeta,
@@ -102,11 +115,9 @@ const verifyOtpAndCompleteAction = async (
   const { code, purpose } = payload;
   const email = payload.email.trim().toLowerCase();
 
-  // 1. Verify code validity, attempt count, and expiration
-  // (Throws an AppError if invalid or expired)
+  // Validate OTP
   await OtpService.verifyOtp(email, purpose, code);
 
-  // 2. Branch according to intent
   switch (purpose) {
     case 'VERIFY_EMAIL': {
       const sessionDays = 7;
@@ -114,7 +125,6 @@ const verifyOtpAndCompleteAction = async (
       const sessionId = crypto.randomUUID();
       const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
-      // Perform user status update and session creation in a single atomic transaction
       let user;
       try {
         user = await prisma.$transaction(async (tx) => {
@@ -173,27 +183,17 @@ const verifyOtpAndCompleteAction = async (
       };
     }
 
-    // case 'PASSWORD_RESET': {
-    //   const resetToken = crypto.randomBytes(32).toString('hex');
-    //   const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-
-    //   // Store resetTokenHash in Redis/DB with 15-minute TTL
-    //   // e.g.: await redis.set(`pwd-reset:${resetTokenHash}`, email, 'EX', 15 * 60);
-    //   await PasswordResetService.saveResetTokenHash(email, resetTokenHash, 15 * 60);
-
-    //   return { resetToken };
-    // }
-
     default:
       return { verified: true };
   }
 };
 
 // ==========================================
-// 2. LOGIN
+// 3. LOGIN
 // ==========================================
 const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) => {
-  const { email, password, fcmToken, rememberMe } = payload;
+  const { password, fcmToken, rememberMe } = payload;
+  const email = payload.email.trim().toLowerCase();
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -210,7 +210,7 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     },
   });
 
-  // Use uniform response for security (prevent email enumeration)
+  // Constant-time style failure to avoid account enumeration
   if (!user || user.deletedAt) {
     throw AppError.unauthorized('Invalid email or password');
   }
@@ -230,7 +230,6 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
 
   const sessionDays = rememberMe ? 30 : 1;
   const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
-
   const sessionId = crypto.randomUUID();
   const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
@@ -276,7 +275,7 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
 };
 
 // ==========================================
-// 3. REFRESH TOKENS (RTR)
+// 4. REFRESH TOKENS (RTR)
 // ==========================================
 const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => {
   let sessionId: string;
@@ -320,7 +319,7 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 
   const currentTokenRecord = session.refreshTokens[0];
 
-  // Breach Detection: Reuse of already used token triggers full session kill
+  // Token reuse detection: revoke session completely
   if (!currentTokenRecord || currentTokenRecord.isUsed) {
     await prisma.session.update({
       where: { id: sessionId },
@@ -332,7 +331,6 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
     throw AppError.unauthorized('Invalid refresh token. Please sign in again.');
   }
 
-  // Expiration check
   if (new Date() > currentTokenRecord.expiresAt) {
     throw AppError.unauthorized('Refresh token has expired');
   }
@@ -342,7 +340,6 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 
   const expiresAt = currentTokenRecord.expiresAt;
 
-  // Rotate token atomically
   await prisma.$transaction([
     prisma.refreshToken.update({
       where: { id: currentTokenRecord.id },
@@ -381,7 +378,7 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 };
 
 // ==========================================
-// 4. LOGOUT
+// 5. LOGOUT
 // ==========================================
 const logout = async (incomingRefreshToken: string) => {
   try {
@@ -402,8 +399,73 @@ const logout = async (incomingRefreshToken: string) => {
       }),
     ]);
   } catch {
-    // Fail silently so cleanups don't crash logout endpoints
+    // Fail silently to avoid breaking client-side logout triggers
   }
+};
+
+// ==========================================
+// 6. FORGOT PASSWORD
+// ==========================================
+const forgotPassword = async (payload: AuthInputType['forgotPasswordPayload']) => {
+  const { email } = payload;
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true },
+  });
+
+  // Return success even if user not found to prevent user enumeration
+  if (!user) {
+    return { success: true };
+  }
+
+  const { rawToken, tokenHash } = AuthUtils.generateResetToken();
+
+  // 15-minute TTL
+  await redis.set(`pwd-reset:${tokenHash}`, user.id, 'EX', 15 * 60);
+
+  if (env.NODE_ENV === 'development') {
+    return { success: true, resetToken: rawToken };
+  }
+
+  await emailQueue.add('send-password-reset', {
+    email: user.email,
+    resetToken: rawToken,
+  });
+
+  return { success: true };
+};
+
+// ==========================================
+// 7. RESET PASSWORD
+// ==========================================
+const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => {
+  const { token, newPassword } = payload;
+
+  const tokenHash = AuthUtils.hashToken(token);
+  const userId = await redis.get(`pwd-reset:${tokenHash}`);
+
+  if (!userId) {
+    throw AppError.badRequest('Invalid or expired reset token');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+  // Update password, revoke all active sessions for security, and consume token
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    }),
+    prisma.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date(), fcmToken: null },
+    }),
+  ]);
+
+  await redis.del(`pwd-reset:${tokenHash}`);
+
+  return { success: true };
 };
 
 export const AuthService = {
@@ -412,4 +474,6 @@ export const AuthService = {
   login,
   refreshTokens,
   logout,
+  forgotPassword,
+  resetPassword,
 };
