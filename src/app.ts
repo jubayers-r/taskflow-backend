@@ -10,6 +10,7 @@ import { env } from './config';
 
 import { emailBullQueue } from './lib/queue';
 import { errorHandler } from './middlewares/errorHandler.middleware';
+import { apiLimiter } from './middlewares/rateLimiter.middleware';
 import { livenessHandler, readinessHandler } from './modules/health/health.controller';
 import { HealthRoutes } from './modules/health/health.routes';
 import { notFoundHandler } from './middlewares/notFoundHandler.middleware';
@@ -27,7 +28,7 @@ app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
 app.use(helmet());
 app.use(cookieParser());
 
-app.use('/api/v1', Routes);
+app.use('/api/v1', apiLimiter, Routes);
 
 // Landing page: / redirects to the health dashboard
 app.get('/', (_req, res) => res.redirect('/health'));

@@ -1,5 +1,6 @@
 // routes/auth.routes.ts
 import sendResponse from '@/lib/response/response';
+import { authLimiter } from '@/middlewares/rateLimiter.middleware';
 import { validateRequest } from '@/middlewares/validateRequest.middleware';
 import { Router } from 'express';
 import { AuthController } from './auth.controller';
@@ -26,31 +27,36 @@ router.get('/', (_req, res) =>
   ),
 );
 
-// In production, attach rateLimiters to sensitive auth endpoints
+// Sensitive credential / OTP endpoints are rate limited per client.
 router.post(
   '/register',
+  authLimiter,
   validateRequest({ body: AuthSchema.registerSchema }),
   AuthController.registerHandler,
 );
 
 router.post(
   '/verify-email',
+  authLimiter,
   validateRequest({ body: AuthSchema.verifyOtpSchema }),
   AuthController.verifyOtpHandler,
 );
 router.post(
   '/forgot-password',
+  authLimiter,
   validateRequest({ body: AuthSchema.forgotPasswordSchema }),
   AuthController.forgotPasswordHandler,
 );
 router.post(
   '/reset-password',
+  authLimiter,
   validateRequest({ body: AuthSchema.resetPasswordSchema }),
   AuthController.resetPasswordHandler,
 );
 
 router.post(
   '/login',
+  authLimiter,
   validateRequest({ body: AuthSchema.loginSchema }),
   AuthController.loginHandler,
 );
