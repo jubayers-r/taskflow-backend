@@ -54,8 +54,7 @@ const envSchema = z
         path: ['RESEND_API_KEY'],
       });
     }
-  })
-  .strict();
+  });
 
 const _env = envSchema.safeParse(process.env);
 

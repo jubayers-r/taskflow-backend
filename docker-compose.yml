@@ -4,12 +4,14 @@ services:
     image: redis:7-alpine
     restart: always
     ports:
-      - '6352:6379'
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+      - '6399:6379'
+    env_file:
+      - .env
+    command: sh -c "redis-server --appendonly yes --requirepass $$REDIS_PASSWORD"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      test: ['CMD', 'sh', '-c', 'redis-cli -a $$REDIS_PASSWORD ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -19,7 +21,7 @@ services:
     image: postgres:18-alpine
     restart: always
     ports:
-      - '5452:5432'
+      - '5599:5432'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
