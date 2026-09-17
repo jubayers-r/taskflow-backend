@@ -22,4 +22,16 @@ process.on('SIGTERM', shutdown);
 
 process.on('SIGINT', shutdown);
 
+// A rejected promise or thrown error outside the request lifecycle would
+// otherwise crash the process silently. Log fatally and exit gracefully.
+process.on('uncaughtException', (error) => {
+  logger.fatal({ err: error }, 'Uncaught exception - shutting down');
+  void shutdown();
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'Unhandled rejection - shutting down');
+  void shutdown();
+});
+
 export default server;
