@@ -29,7 +29,7 @@ export type ValidatedRequestHandler<T extends RequestSchema> = (
 export const validateRequest = <T extends RequestSchema>(schemas: T): RequestHandler => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const errorDetails: ValidationErrorDetail[] = [];
-    const validatedOutput: Partial<ValidatedData<T>> = {};
+    const validatedOutput: Record<string, unknown> = {};
 
     const targets: Array<keyof RequestSchema> = ['body', 'query', 'params'];
 
@@ -39,7 +39,7 @@ export const validateRequest = <T extends RequestSchema>(schemas: T): RequestHan
 
       try {
         const result = await schema.parseAsync(req[target]);
-        validatedOutput[target as keyof ValidatedData<T>] = result as any;
+        validatedOutput[target] = result;
       } catch (err) {
         if (err instanceof ZodError) {
           for (const issue of err.issues) {

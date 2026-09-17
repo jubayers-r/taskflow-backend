@@ -1,10 +1,6 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
-type AsyncRequestHandler = (
-  req: Request<any, any, any, any>,
-  res: Response,
-  next: NextFunction,
-) => Promise<any>;
+type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
 
 /**
  * Higher-order function that catches rejections in async routes
