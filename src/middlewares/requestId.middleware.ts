@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger';
+import { runWithRequestContext } from '@/lib/requestContext';
 import { NextFunction, Request, Response } from 'express';
 
 export function requestIdMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -12,8 +13,19 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
   // Send it back in the response headers so clients can quote it on error
   res.setHeader('X-Request-Id', correlationId);
 
-  // Log incoming request
-  req.log.info({ method: req.method, url: req.url }, 'Incoming request');
+  const startedAt = performance.now();
+  res.on('finish', () => {
+    req.log.info(
+      {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+      },
+      'Request completed',
+    );
+  });
 
-  next();
+  // Everything downstream (including async continuations) can read the context.
+  runWithRequestContext({ correlationId, logger: req.log }, () => next());
 }

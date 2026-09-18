@@ -20,53 +20,6 @@ import { notFoundHandler } from './middlewares/notFoundHandler.middleware';
 import { requestIdMiddleware } from './middlewares/requestId.middleware';
 import Routes from './routes';
 
-const app: Application = express();
-
-// Required for req.ip to resolve the real client behind a reverse proxy.
-app.set('trust proxy', env.TRUST_PROXY);
-
-app.use('/public', express.static(path.join(process.cwd(), 'public')));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(requestIdMiddleware);
-app.use(attachClientMeta);
-app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
-app.use(helmet());
-app.use(cookieParser());
-
-app.use('/api/v1', apiLimiter, Routes);
-
-// Landing page: / redirects to the health dashboard
-app.get('/', (_req, res) => res.redirect('/health'));
-
-// Operational endpoints live at the root (unversioned) by convention.
-// /health        -> human-readable dashboard
-// /health/live   -> liveness probe  (process up, no deps)
-// /health/ready  -> readiness probe (database + Redis)
-app.use('/health', HealthRoutes);
-
-// Kubernetes-style aliases
-app.get('/healthz', livenessHandler);
-app.get('/readyz', readinessHandler);
-
-// Bull Board is only mounted when the queue is Redis-backed
-if (emailBullQueue) {
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath('/admin/queues');
-
-  createBullBoard({
-    queues: [new BullMQAdapter(emailBullQueue)],
-    serverAdapter,
-  });
-
-  app.use('/admin/queues', serverAdapter.getRouter());
-}
-
-// OpenAPI document and Scalar API reference UI
-const openApiDocument = buildOpenApiDocument();
-app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
-
 // Scalar loads its bundle from a CDN and ships an inline init script, so the
 // default helmet CSP (`script-src 'self'`) would blank the page. Relax it for
 // this read-only route only, leaving the strict policy everywhere else.
@@ -82,17 +35,72 @@ const docsContentSecurityPolicy = [
   "base-uri 'self'",
 ].join('; ');
 
-app.use('/docs', (_req, res, next) => {
-  res.setHeader('Content-Security-Policy', docsContentSecurityPolicy);
-  next();
-});
+/**
+ * Builds a fully-wired Express application. Exported as a factory so tests can
+ * create isolated instances (and so the app is not a hard-to-mock singleton).
+ */
+export const createApp = (): Application => {
+  const app = express();
 
-app.use('/docs', apiReference({ url: '/openapi.json' }));
+  // Required for req.ip to resolve the real client behind a reverse proxy.
+  app.set('trust proxy', env.TRUST_PROXY);
+  app.disable('x-powered-by');
 
-//global API not found middleware
-app.use(notFoundHandler);
+  app.use('/public', express.static(path.join(process.cwd(), 'public')));
 
-//global error middleware
-app.use(errorHandler);
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(requestIdMiddleware);
+  app.use(attachClientMeta);
+  app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
+  app.use(helmet());
+  app.use(cookieParser());
+
+  app.use('/api/v1', apiLimiter, Routes);
+
+  // Landing page: / redirects to the health dashboard
+  app.get('/', (_req, res) => res.redirect('/health'));
+
+  // Operational endpoints live at the root (unversioned) by convention.
+  app.use('/health', HealthRoutes);
+
+  // Kubernetes-style aliases
+  app.get('/healthz', livenessHandler);
+  app.get('/readyz', readinessHandler);
+
+  // Bull Board is only mounted when the queue is Redis-backed
+  if (emailBullQueue) {
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/admin/queues');
+
+    createBullBoard({
+      queues: [new BullMQAdapter(emailBullQueue)],
+      serverAdapter,
+    });
+
+    app.use('/admin/queues', serverAdapter.getRouter());
+  }
+
+  // OpenAPI document and Scalar API reference UI
+  const openApiDocument = buildOpenApiDocument();
+  app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
+
+  app.use('/docs', (_req, res, next) => {
+    res.setHeader('Content-Security-Policy', docsContentSecurityPolicy);
+    next();
+  });
+
+  app.use('/docs', apiReference({ url: '/openapi.json' }));
+
+  //global API not found middleware
+  app.use(notFoundHandler);
+
+  //global error middleware
+  app.use(errorHandler);
+
+  return app;
+};
+
+const app = createApp();
 
 export default app;
