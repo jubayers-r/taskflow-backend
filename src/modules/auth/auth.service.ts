@@ -468,6 +468,32 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
   return { success: true };
 };
 
+// ==========================================
+// 8. CURRENT USER
+// ==========================================
+const getCurrentUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      agencyId: true,
+      profileImage: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user) {
+    throw AppError.notFound('User not found');
+  }
+
+  return user;
+};
+
 export const AuthService = {
   register,
   verifyOtpAndCompleteAction,
@@ -476,4 +502,5 @@ export const AuthService = {
   logout,
   forgotPassword,
   resetPassword,
+  getCurrentUser,
 };

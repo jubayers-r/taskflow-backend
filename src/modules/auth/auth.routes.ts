@@ -1,6 +1,7 @@
 // routes/auth.routes.ts
 import { describeRoute } from '@/lib/openapi';
 import sendResponse from '@/lib/response/response';
+import { authenticate } from '@/middlewares/auth.middleware';
 import { authLimiter } from '@/middlewares/rateLimiter.middleware';
 import { validateRequest } from '@/middlewares/validateRequest.middleware';
 import { Router } from 'express';
@@ -27,6 +28,7 @@ router.get('/', (_req, res) =>
         login: 'POST /api/v1/auth/login',
         refresh: 'POST /api/v1/auth/refresh',
         logout: 'POST /api/v1/auth/logout',
+        me: 'GET /api/v1/auth/me',
         forgotPassword: 'POST /api/v1/auth/forgot-password',
         resetPassword: 'POST /api/v1/auth/reset-password',
       },
@@ -132,5 +134,14 @@ describeRoute({
   responses: { 200: 'Logged out' },
 });
 router.post('/logout', AuthController.logoutHandler);
+
+describeRoute({
+  method: 'get',
+  path: '/api/v1/auth/me',
+  tags: ['Auth'],
+  summary: 'Get the currently authenticated user',
+  responses: { 200: 'Current user', 401: 'Missing or invalid access token' },
+});
+router.get('/me', authenticate, AuthController.meHandler);
 
 export const AuthRoutes = router;

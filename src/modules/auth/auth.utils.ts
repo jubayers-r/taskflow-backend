@@ -9,6 +9,7 @@ interface AccessTokenPayload extends jose.JWTPayload {
   sub: string;
   role: string;
   agencyId: string | null;
+  sessionId: string;
 }
 
 const signAccessToken = async (payload: {

@@ -97,6 +97,14 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
   return sendResponse.ok(res, null, 'Logged out successfully');
 });
 
+const meHandler = catchAsync(async (req: Request, res: Response) => {
+  if (!req.auth) {
+    throw AppError.unauthorized();
+  }
+  const user = await AuthService.getCurrentUser(req.auth.userId);
+  return sendResponse.ok(res, user, 'Current user');
+});
+
 export const AuthController = {
   registerHandler,
   verifyOtpHandler,
@@ -105,4 +113,5 @@ export const AuthController = {
   logoutHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  meHandler,
 };

@@ -4,12 +4,11 @@ type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => 
 
 /**
  * Higher-order function that catches rejections in async routes
- * and forwards them to Express's global error middleware.
+ * and forwards them to Express's global error middleware. The returned promise
+ * is propagated so callers/tests can await completion; Express ignores it.
  */
 export const catchAsync = (fn: AsyncRequestHandler): RequestHandler => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next).catch(next);
-  };
+  return (req: Request, res: Response, next: NextFunction) => fn(req, res, next).catch(next);
 };
 
 export default catchAsync;
