@@ -59,9 +59,7 @@ REDIS_PASSWORD=""
 ALLOWED_ORIGINS="http://localhost:3000, http://localhost:5173"
 
 JWT_ACCESS_SECRET="your-secret-here"
-JWT_REFRESH_SECRET="your-secret-here"
 JWT_ACCESS_EXPIRES_IN="15m"
-JWT_REFRESH_EXPIRES_IN="30d"
 SALT_ROUNDS=12
 # At least 32 characters. Generate with e.g. `openssl rand -hex 32`.
 OTP_PEPPER_SECRET="change-me-to-a-random-32+char-secret"

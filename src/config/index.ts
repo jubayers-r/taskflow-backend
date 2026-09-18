@@ -32,9 +32,7 @@ const envSchema = z
     // JWT config
 
     JWT_ACCESS_SECRET: z.string().min(1),
-    JWT_REFRESH_SECRET: z.string().min(1),
     JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-    JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
     SALT_ROUNDS: z.coerce.number().int().min(1).default(12),
 
     // OTP
