@@ -32,6 +32,7 @@ router.get('/', (_req, res) =>
         sessions: 'GET /api/v1/auth/sessions',
         forgotPassword: 'POST /api/v1/auth/forgot-password',
         resetPassword: 'POST /api/v1/auth/reset-password',
+        resendOtp: 'POST /api/v1/auth/resend-otp',
       },
     },
     'Auth API',
@@ -101,6 +102,25 @@ router.post(
   authLimiter,
   validateRequest({ body: AuthSchema.resetPasswordSchema }),
   AuthController.resetPasswordHandler,
+);
+
+describeRoute({
+  method: 'post',
+  path: '/api/v1/auth/resend-otp',
+  tags: ['Auth'],
+  summary: 'Resend a verification code',
+  body: AuthSchema.resendOtpSchema,
+  responses: {
+    200: 'Code sent if the account requires verification',
+    429: 'Cooldown in effect',
+    422: 'Validation error',
+  },
+});
+router.post(
+  '/resend-otp',
+  authLimiter,
+  validateRequest({ body: AuthSchema.resendOtpSchema }),
+  AuthController.resendOtpHandler,
 );
 
 describeRoute({

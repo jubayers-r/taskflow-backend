@@ -61,6 +61,13 @@ const resetPasswordSchema = z
   })
   .strict();
 
+const resendOtpSchema = z
+  .object({
+    email: z.email('Email is required').trim().toLowerCase(),
+    purpose: z.enum(['VERIFY_EMAIL', 'PASSWORD_RESET', 'LOGIN']),
+  })
+  .strict();
+
 const sessionIdParamSchema = z
   .object({
     id: z.uuid('Invalid session id'),
@@ -73,6 +80,7 @@ export const AuthSchema = {
   verifyOtpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resendOtpSchema,
   sessionIdParamSchema,
 };
 
@@ -82,5 +90,6 @@ export type AuthInputType = {
   verifyOtpPayload: z.infer<typeof verifyOtpSchema>;
   forgotPasswordPayload: z.infer<typeof forgotPasswordSchema>;
   resetPasswordPayload: z.infer<typeof resetPasswordSchema>;
+  resendOtpPayload: z.infer<typeof resendOtpSchema>;
   sessionIdParams: z.infer<typeof sessionIdParamSchema>;
 };

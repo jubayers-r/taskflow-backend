@@ -98,6 +98,14 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
   return sendResponse.ok(res, null, 'Logged out successfully');
 });
 
+const resendOtpHandler = catchAsync(async (req: Request, res: Response) => {
+  const payload = validatedBody<AuthInputType['resendOtpPayload']>(req);
+  const result = await AuthService.resendOtp(payload, extractClientMeta(req));
+
+  req.log.info({ email: payload.email, purpose: payload.purpose }, 'OTP resent');
+  return sendResponse.ok(res, result, 'Verification code sent');
+});
+
 const meHandler = catchAsync(async (req: Request, res: Response) => {
   if (!req.auth) {
     throw AppError.unauthorized();
@@ -139,6 +147,7 @@ export const AuthController = {
   logoutHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  resendOtpHandler,
   meHandler,
   listSessionsHandler,
   revokeSessionHandler,

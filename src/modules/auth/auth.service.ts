@@ -469,7 +469,30 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
 };
 
 // ==========================================
-// 8. SESSIONS
+// 8. RESEND OTP
+// ==========================================
+const resendOtp = async (payload: AuthInputType['resendOtpPayload'], meta: ClientMeta) => {
+  const email = payload.email.trim().toLowerCase();
+  const { purpose } = payload;
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, emailVerifiedAt: true },
+  });
+
+  // Never reveal whether an account exists / is already verified.
+  if (!user) {
+    return { success: true };
+  }
+  if (purpose === 'VERIFY_EMAIL' && user.emailVerifiedAt) {
+    return { success: true };
+  }
+
+  return OtpService.sendOtp(email, purpose, meta);
+};
+
+// ==========================================
+// 9. SESSIONS
 // ==========================================
 const listSessions = async (userId: string, currentSessionId: string) => {
   const sessions = await prisma.session.findMany({
@@ -531,6 +554,7 @@ export const AuthService = {
   logout,
   forgotPassword,
   resetPassword,
+  resendOtp,
   listSessions,
   revokeSession,
   revokeOtherSessions,
