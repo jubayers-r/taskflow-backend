@@ -12,6 +12,7 @@ export const ErrorCode = {
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
   TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
@@ -69,6 +70,10 @@ export class AppError extends Error {
 
   static conflict(msg = 'Conflict') {
     return new AppError(httpStatus.CONFLICT, ErrorCode.CONFLICT, msg);
+  }
+
+  static accountLocked(msg = 'Account temporarily locked') {
+    return new AppError(httpStatus.LOCKED, ErrorCode.ACCOUNT_LOCKED, msg);
   }
 
   static tooManyRequests(msg = 'Too many requests, please try again later') {

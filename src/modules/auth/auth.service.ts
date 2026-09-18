@@ -17,6 +17,7 @@ export interface ClientMeta {
 }
 
 const SALT_ROUNDS = env.SALT_ROUNDS;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // ==========================================
 // 1. REGISTER
@@ -120,8 +121,7 @@ const verifyOtpAndCompleteAction = async (
 
   switch (purpose) {
     case 'VERIFY_EMAIL': {
-      const sessionDays = 7;
-      const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
+      const sessionExpiresAt = new Date(Date.now() + env.SESSION_TTL_DAYS * MS_PER_DAY);
       const sessionId = crypto.randomUUID();
       const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
@@ -207,6 +207,8 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
       isRestricted: true,
       deletedAt: true,
       emailVerifiedAt: true,
+      failedLoginAttempts: true,
+      lockedUntil: true,
     },
   });
 
@@ -215,8 +217,28 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     throw AppError.unauthorized('Invalid email or password');
   }
 
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+    throw AppError.accountLocked(
+      `Account temporarily locked due to failed attempts. Try again in ${minutesLeft} minute(s).`,
+    );
+  }
+
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) {
+    const attempts = user.failedLoginAttempts + 1;
+    const shouldLock = attempts >= env.LOCKOUT_MAX_ATTEMPTS;
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: shouldLock
+        ? {
+            failedLoginAttempts: 0,
+            lockedUntil: new Date(Date.now() + env.LOCKOUT_DURATION_MINUTES * 60 * 1000),
+          }
+        : { failedLoginAttempts: attempts },
+    });
+
     throw AppError.unauthorized('Invalid email or password');
   }
 
@@ -228,8 +250,16 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     throw AppError.forbidden('Your account is inactive or restricted');
   }
 
-  const sessionDays = rememberMe ? 30 : 1;
-  const sessionExpiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
+  // Successful login clears the brute-force counter / lock.
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
+
+  const sessionDays = rememberMe ? env.SESSION_LONG_TTL_DAYS : env.SESSION_SHORT_TTL_DAYS;
+  const sessionExpiresAt = new Date(Date.now() + sessionDays * MS_PER_DAY);
   const sessionId = crypto.randomUUID();
   const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 

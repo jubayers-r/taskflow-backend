@@ -40,6 +40,13 @@ const envSchema = z
     // OTP
     OTP_PEPPER_SECRET: z.string().min(32, 'OTP_PEPPER_SECRET must be at least 32 characters'),
 
+    // Auth session / lockout policy
+    SESSION_TTL_DAYS: z.coerce.number().int().min(1).default(7),
+    SESSION_SHORT_TTL_DAYS: z.coerce.number().int().min(1).default(1),
+    SESSION_LONG_TTL_DAYS: z.coerce.number().int().min(1).default(30),
+    LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
+    LOCKOUT_DURATION_MINUTES: z.coerce.number().int().min(1).default(15),
+
     // Email config
     EMAIL_PROVIDER: z.enum(['gmail', 'resend']).default('gmail'),
     EMAIL_FROM: z.email().trim(),
