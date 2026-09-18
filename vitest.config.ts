@@ -15,5 +15,24 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     setupFiles: ['./src/__tests__/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/__tests__/**',
+        'src/types/**',
+        'src/emails/**',
+        'src/server.ts',
+        'src/workers/**',
+      ],
+      thresholds: {
+        lines: 40,
+        functions: 38,
+        statements: 40,
+        branches: 15,
+      },
+    },
   },
 });

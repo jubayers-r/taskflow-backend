@@ -6,6 +6,12 @@ process.env.PROJECT_NAME = 'taskflow-backend-test';
 process.env.PORT = '5000';
 process.env.DATABASE_URL =
   'postgresql://postgres:postgres@localhost:5432/taskflow_test?schema=public';
+
+// Integration suites (e.g. in CI) point DATABASE_URL at a real, migrated test
+// database so app code and Prisma connect to the same target as the tests.
+if (process.env.TEST_DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+}
 process.env.LOG_LEVEL = 'error';
 process.env.TRUST_PROXY = '0';
 process.env.USE_REDIS = 'false';
