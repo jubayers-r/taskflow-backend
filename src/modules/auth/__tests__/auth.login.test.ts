@@ -1,15 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { userFindUnique, userUpdate, compare } = vi.hoisted(() => ({
-  userFindUnique: vi.fn(),
-  userUpdate: vi.fn(),
+const {
+  findUserByEmailForAuth,
+  updateLoginFailureCount,
+  lockAccount,
+  clearLoginLockout,
+  createLoginSession,
+  compare,
+} = vi.hoisted(() => ({
+  findUserByEmailForAuth: vi.fn(),
+  updateLoginFailureCount: vi.fn(),
+  lockAccount: vi.fn(),
+  clearLoginLockout: vi.fn(),
+  createLoginSession: vi.fn(),
   compare: vi.fn(),
 }));
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: { user: { findUnique: userFindUnique, update: userUpdate } },
+vi.mock('@/modules/auth/auth.repository', () => ({
+  findUserByEmailForAuth,
+  updateLoginFailureCount,
+  lockAccount,
+  clearLoginLockout,
+  createLoginSession,
 }));
 vi.mock('bcrypt', () => ({ default: { compare, hash: vi.fn() } }));
+vi.mock('@/lib/audit', () => ({
+  AuditAction: { ACCOUNT_LOCKED: 'ACCOUNT_LOCKED', USER_LOGIN: 'USER_LOGIN' },
+  recordAudit: vi.fn(),
+}));
 
 import { env } from '@/config';
 import { AppError, ErrorCode } from '@/lib/response/AppError';
@@ -41,7 +59,7 @@ describe('AuthService.login lockout', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects a locked account before checking the password', async () => {
-    userFindUnique.mockResolvedValue({
+    findUserByEmailForAuth.mockResolvedValue({
       ...baseUser,
       lockedUntil: new Date(Date.now() + 10 * 60 * 1000),
     });
@@ -51,34 +69,29 @@ describe('AuthService.login lockout', () => {
   });
 
   it('increments the failure counter on a bad password', async () => {
-    userFindUnique.mockResolvedValue({ ...baseUser, failedLoginAttempts: 1 });
+    findUserByEmailForAuth.mockResolvedValue({ ...baseUser, failedLoginAttempts: 1 });
     compare.mockResolvedValue(false);
-    userUpdate.mockResolvedValue({});
 
     await expect(login()).rejects.toBeInstanceOf(AppError);
-    expect(userUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { failedLoginAttempts: 2 } }),
-    );
+    expect(updateLoginFailureCount).toHaveBeenCalledWith('user-1', 2);
+    expect(lockAccount).not.toHaveBeenCalled();
   });
 
   it('locks the account once the max attempts is reached', async () => {
-    userFindUnique.mockResolvedValue({
+    findUserByEmailForAuth.mockResolvedValue({
       ...baseUser,
       failedLoginAttempts: env.LOCKOUT_MAX_ATTEMPTS - 1,
     });
     compare.mockResolvedValue(false);
-    userUpdate.mockResolvedValue({});
 
     await expect(login()).rejects.toBeInstanceOf(AppError);
-    expect(userUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ failedLoginAttempts: 0, lockedUntil: expect.any(Date) }),
-      }),
-    );
+    expect(lockAccount).toHaveBeenCalledWith('user-1', expect.any(Date));
+    expect(updateLoginFailureCount).not.toHaveBeenCalled();
+    expect(createLoginSession).not.toHaveBeenCalled();
   });
 
   it('does not reveal deleted accounts', async () => {
-    userFindUnique.mockResolvedValue({ ...baseUser, deletedAt: new Date() });
+    findUserByEmailForAuth.mockResolvedValue({ ...baseUser, deletedAt: new Date() });
 
     await expect(login()).rejects.toMatchObject({ code: ErrorCode.UNAUTHORIZED });
   });

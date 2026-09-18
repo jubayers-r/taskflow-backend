@@ -9,6 +9,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as repo from './auth.repository';
 import { AuthInputType } from './auth.schemas';
+import { AuthSerializer } from './auth.serializer';
 import { AuthUtils } from './auth.utils';
 import { OtpService } from './otp.service';
 
@@ -146,12 +147,7 @@ const verifyOtpAndCompleteAction = async (
       });
 
       return {
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          agencyId: user.agencyId,
-        },
+        user: AuthSerializer.authUser(user),
         accessToken,
         refreshToken,
         expiresAt: sessionExpiresAt,

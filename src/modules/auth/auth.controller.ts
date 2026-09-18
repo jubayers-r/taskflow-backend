@@ -6,6 +6,7 @@ import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
 import { UsersService } from '../users/users.service';
 import { AuthInputType } from './auth.schemas';
+import { AuthSerializer } from './auth.serializer';
 import { AuthService } from './auth.service';
 
 const REFRESH_COOKIE_NAME = 'jid';
@@ -111,7 +112,7 @@ const meHandler = catchAsync(async (req: Request, res: Response) => {
     throw AppError.unauthorized();
   }
   const user = await UsersService.getCurrentUser(req.auth.userId);
-  return sendResponse.ok(res, user, 'Current user');
+  return sendResponse.ok(res, AuthSerializer.currentUser(user), 'Current user');
 });
 
 const listSessionsHandler = catchAsync(async (req: Request, res: Response) => {

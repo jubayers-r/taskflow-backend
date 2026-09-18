@@ -35,7 +35,7 @@ sessions), or the same query reused by several services. See
 
 Reference implementation: `src/modules/auth/` — a large module that follows
 this anatomy end-to-end (routes → schemas → controller → service → repository
-→ utils → colocated `__tests__`).
+→ serializer → utils → colocated `__tests__`).
 
 ## Guard order (routes)
 

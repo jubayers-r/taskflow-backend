@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { sessionFindUnique } = vi.hoisted(() => ({ sessionFindUnique: vi.fn() }));
-vi.mock('@/lib/prisma', () => ({
-  prisma: { session: { findUnique: sessionFindUnique } },
+const { findSessionWithAccountState } = vi.hoisted(() => ({
+  findSessionWithAccountState: vi.fn(),
 }));
+vi.mock('@/modules/auth/auth.repository', () => ({ findSessionWithAccountState }));
 
 import { AppError } from '@/lib/response/AppError';
 import { authenticate, authorize, requireTenant } from '@/middlewares/auth.middleware';
@@ -43,7 +43,7 @@ const tokenPayload = {
 
 describe('authenticate', () => {
   beforeEach(() => {
-    sessionFindUnique.mockReset();
+    findSessionWithAccountState.mockReset();
   });
 
   it('rejects a request without a bearer token', async () => {
@@ -61,10 +61,11 @@ describe('authenticate', () => {
   });
 
   it('attaches req.auth for a valid token backed by a live session', async () => {
-    sessionFindUnique.mockResolvedValue(makeSession());
+    findSessionWithAccountState.mockResolvedValue(makeSession());
     const { error, req } = await invoke(authenticate, await bearer(tokenPayload));
 
     expect(error).toBeUndefined();
+    expect(findSessionWithAccountState).toHaveBeenCalledWith('session-1');
     expect(req.auth).toEqual({
       userId: 'user-1',
       role: 'OWNER',
@@ -74,7 +75,7 @@ describe('authenticate', () => {
   });
 
   it('rejects a token whose session was revoked', async () => {
-    sessionFindUnique.mockResolvedValue(makeSession({ revokedAt: new Date() }));
+    findSessionWithAccountState.mockResolvedValue(makeSession({ revokedAt: new Date() }));
     const { error } = await invoke(authenticate, await bearer(tokenPayload));
 
     expect(error).toBeInstanceOf(AppError);
@@ -82,7 +83,7 @@ describe('authenticate', () => {
   });
 
   it('rejects an inactive user even with a live session', async () => {
-    sessionFindUnique.mockResolvedValue(
+    findSessionWithAccountState.mockResolvedValue(
       makeSession({ user: { isActive: false, isRestricted: false } }),
     );
     const { error } = await invoke(authenticate, await bearer(tokenPayload));

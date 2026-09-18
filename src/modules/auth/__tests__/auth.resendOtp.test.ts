@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { userFindUnique, sendOtp } = vi.hoisted(() => ({
-  userFindUnique: vi.fn(),
+const { findUserByEmailVerifyState, sendOtp } = vi.hoisted(() => ({
+  findUserByEmailVerifyState: vi.fn(),
   sendOtp: vi.fn(),
 }));
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: { user: { findUnique: userFindUnique } },
-}));
+vi.mock('@/modules/auth/auth.repository', () => ({ findUserByEmailVerifyState }));
 vi.mock('@/modules/auth/otp.service', () => ({
   OtpService: { sendOtp, verifyOtp: vi.fn() },
 }));
@@ -20,7 +18,7 @@ describe('AuthService.resendOtp', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('does not reveal that an email is unknown', async () => {
-    userFindUnique.mockResolvedValue(null);
+    findUserByEmailVerifyState.mockResolvedValue(null);
 
     await expect(
       AuthService.resendOtp({ email: 'ghost@example.com', purpose: 'VERIFY_EMAIL' }, meta),
@@ -29,7 +27,7 @@ describe('AuthService.resendOtp', () => {
   });
 
   it('skips sending when the email is already verified', async () => {
-    userFindUnique.mockResolvedValue({ id: 'user-1', emailVerifiedAt: new Date() });
+    findUserByEmailVerifyState.mockResolvedValue({ id: 'user-1', emailVerifiedAt: new Date() });
 
     await AuthService.resendOtp({ email: 'verified@example.com', purpose: 'VERIFY_EMAIL' }, meta);
 
@@ -37,7 +35,7 @@ describe('AuthService.resendOtp', () => {
   });
 
   it('sends a normalized code for a pending account', async () => {
-    userFindUnique.mockResolvedValue({ id: 'user-1', emailVerifiedAt: null });
+    findUserByEmailVerifyState.mockResolvedValue({ id: 'user-1', emailVerifiedAt: null });
     sendOtp.mockResolvedValue({ success: true, cooldownSeconds: 60 });
 
     await AuthService.resendOtp({ email: '  Pending@Example.COM ', purpose: 'VERIFY_EMAIL' }, meta);
