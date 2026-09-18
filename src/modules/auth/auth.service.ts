@@ -1,5 +1,6 @@
 // auth.service.ts
 import { env } from '@/config';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { cache } from '@/lib/cache';
 import { prisma } from '@/lib/prisma';
 import { emailQueue } from '@/lib/queue';
@@ -82,6 +83,15 @@ const register = async (payload: AuthInputType['registerPayload']) => {
   let otp;
   let otpSent = true;
 
+  await recordAudit({
+    action: AuditAction.USER_REGISTERED,
+    entityType: 'User',
+    entityId: user.id,
+    actorId: user.id,
+    agencyId: agencyId ?? null,
+    metadata: { email: normalizedEmail },
+  });
+
   try {
     otp = await OtpService.sendOtp(normalizedEmail, 'VERIFY_EMAIL');
   } catch (error) {
@@ -163,6 +173,16 @@ const verifyOtpAndCompleteAction = async (
         throw error;
       }
 
+      await recordAudit({
+        action: AuditAction.EMAIL_VERIFIED,
+        entityType: 'User',
+        entityId: user.id,
+        actorId: user.id,
+        agencyId: user.agencyId,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+
       const accessToken = await AuthUtils.signAccessToken({
         userId: user.id,
         role: user.role,
@@ -239,6 +259,19 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
         : { failedLoginAttempts: attempts },
     });
 
+    if (shouldLock) {
+      await recordAudit({
+        action: AuditAction.ACCOUNT_LOCKED,
+        entityType: 'User',
+        entityId: user.id,
+        actorId: user.id,
+        agencyId: user.agencyId,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        metadata: { reason: 'too_many_failed_logins' },
+      });
+    }
+
     throw AppError.unauthorized('Invalid email or password');
   }
 
@@ -295,6 +328,17 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     role: user.role,
     agencyId: user.agencyId,
     sessionId,
+  });
+
+  await recordAudit({
+    action: AuditAction.USER_LOGIN,
+    entityType: 'User',
+    entityId: user.id,
+    actorId: user.id,
+    agencyId: user.agencyId,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    metadata: { rememberMe: rememberMe ?? false },
   });
 
   return {
@@ -454,6 +498,14 @@ const forgotPassword = async (payload: AuthInputType['forgotPasswordPayload']) =
   // 15-minute TTL
   await cache.set(`pwd-reset:${tokenHash}`, user.id, 15 * 60);
 
+  await recordAudit({
+    action: AuditAction.PASSWORD_RESET_REQUESTED,
+    entityType: 'User',
+    entityId: user.id,
+    actorId: user.id,
+    metadata: { email: user.email },
+  });
+
   if (env.NODE_ENV === 'development') {
     return { success: true, resetToken: rawToken };
   }
@@ -494,6 +546,13 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
   ]);
 
   await cache.del(`pwd-reset:${tokenHash}`);
+
+  await recordAudit({
+    action: AuditAction.PASSWORD_RESET,
+    entityType: 'User',
+    entityId: userId,
+    actorId: userId,
+  });
 
   return { success: true };
 };
@@ -564,6 +623,13 @@ const revokeSession = async (userId: string, sessionId: string) => {
     data: { revokedAt: new Date(), fcmToken: null },
   });
 
+  await recordAudit({
+    action: AuditAction.SESSION_REVOKED,
+    entityType: 'Session',
+    entityId: sessionId,
+    actorId: userId,
+  });
+
   return { success: true };
 };
 
@@ -571,6 +637,14 @@ const revokeOtherSessions = async (userId: string, currentSessionId: string) => 
   const result = await prisma.session.updateMany({
     where: { userId, id: { not: currentSessionId }, revokedAt: null },
     data: { revokedAt: new Date(), fcmToken: null },
+  });
+
+  await recordAudit({
+    action: AuditAction.SESSION_REVOKED,
+    entityType: 'User',
+    entityId: userId,
+    actorId: userId,
+    metadata: { scope: 'others', count: result.count },
   });
 
   return { revoked: result.count };

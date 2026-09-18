@@ -8,7 +8,7 @@ model AuditLog {
     entityId   String
 
     actorId  String? @map("actor_id") // Pure raw string, no relation
-    agencyId String  @map("agency_id")
+    agencyId String? @map("agency_id") // Null for pre-agency/auth events
 
     ipAddress String?  @map("ip_address")
     userAgent String?  @map("user_agent")
