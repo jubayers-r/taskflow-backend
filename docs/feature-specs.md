@@ -10,11 +10,14 @@ Anything not listed here is out of scope for the current milestone.
 ## Common conventions (all modules)
 
 - Anatomy: `routes.ts` / `schemas.ts` / `controller.ts` / `service.ts` /
-  `repository.ts` / `serializer.ts` / colocated `__tests__`.
+  `serializer.ts` / colocated `__tests__`. `repository.ts` is **optional**:
+  add it only for transactional / multi-step flows (see the module guide).
+  Plain CRUD below calls `prisma` directly from the service.
 - Guard order: `authenticate → requireTenant → authorize(roles)? → validateRequest`.
-- Tenancy: repositories filter list queries by `agencyId`, and read single
-  resources with `findFirst({ where: { id, agencyId } })`. Not-found within the
-  tenant → `404` (never `403`, never `findUnique({ id })` alone).
+- Tenancy: every query is scoped. List queries filter by `agencyId`; single
+  resource reads use `findFirst({ where: { id, agencyId } })` — in the service
+  when there is no repository, in the repository otherwise. Not-found within
+  the tenant → `404` (never `403`, never `findUnique({ id })` alone).
 - Serializers: responses are shaped in the serializer; never raw Prisma rows,
   never leaks (passwords, hashes, internal ids).
 - Pagination is inline per endpoint in the query schema:
@@ -25,9 +28,10 @@ Anything not listed here is out of scope for the current milestone.
     story, not offset logic.
 - Audit: state changes log via `recordAudit` with an `AuditAction` in
   `src/lib/audit.ts` (extend the enum; never inline strings).
-- Unit tests mock the **repository** boundary (see
-  `src/modules/auth/__tests__/`). Every endpoint needs: happy path, validation
-  failure, tenancy isolation (cross-tenant → 404), authz (wrong role → 403).
+- Unit tests mock exactly one boundary — the repository if the flow has one,
+  `@/lib/prisma` otherwise (see `src/modules/auth/__tests__/`). Every endpoint
+  needs: happy path, validation failure, tenancy isolation (cross-tenant →
+  404), authz (wrong role → 403).
 - `describeRoute` per endpoint so `src/__tests__/openapi.test.ts` stays green.
   Note: `describeRoute` in `src/lib/openapi.ts` currently supports only
   `method/path/tags/body/responses/security` — extend it with `query`/`params`
@@ -48,8 +52,9 @@ deletable (`deletedAt`), `createdAt`/`updatedAt`. Fields exposed: `id`, `name`,
 | DELETE | `/projects/:id` | OWNER             | soft delete; audit `PROJECT_DELETED`          |
 
 - `POST` body: `name` (1..100), `description` (0..2000, optional).
-- `GET /projects` response includes `taskCount` derived with a `_count` or a
-  subquery in the repository; serializer strips nothing sensitive here.
+- `GET /projects` response includes `taskCount` derived in the service with a
+  `_count` or a subquery (no repository needed for this CRUD module); the
+  serializer strips nothing sensitive here.
 - `DELETE` on an unknown/foreign project → `404` (same as reads).
 
 ## Module: Tasks (+ subtasks, comments, attachments)

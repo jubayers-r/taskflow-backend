@@ -150,7 +150,7 @@ During a deploy the app restarts; because the failure path is rolled forward by 
 
 ## Docs & guidelines
 
-- **Canonical module guide** — [`docs/module-guide.md`](docs/module-guide.md). Every feature module follows one anatomy: `routes → schemas → controller → service → repository → serializer → colocated tests`. No module touches `prisma` outside its `repository.ts`; tenant reads use `findFirst({ id, agencyId })` (→ 404); every endpoint ships a `describeRoute` and colocated tests.
+- **Canonical module guide** — [`docs/module-guide.md`](docs/module-guide.md). Every feature module follows one anatomy: `routes → schemas → controller → service → (optional repository) → serializer → colocated tests`. Plain CRUD calls `prisma` from the service directly; a `repository.ts` is only added for transactional/multi-step flows. Tenant reads use `findFirst({ id, agencyId })` (→ 404); every endpoint ships a `describeRoute` and colocated tests.
 - **Feature specs** — [`docs/feature-specs.md`](docs/feature-specs.md). Back-of-the-envelope contracts for the upcoming Projects & Tasks modules (not built yet).
 - **Deferred work** — [`BACKLOG.md`](BACKLOG.md). Agencies/team management, billing, file uploads, multi-agency, concurrency, and why each was pushed.
 

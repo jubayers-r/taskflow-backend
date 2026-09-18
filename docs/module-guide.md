@@ -18,12 +18,20 @@ src/modules/<domain>/
                           (page≥1, limit 1..100, keyset/offset math completed
                           in the service — controllers never compute offsets)
   <domain>.controller.ts  Thin: read req.validated, call service, sendResponse
-  <domain>.service.ts     Business rules only; tenancy + ownership; AppError
-  <domain>.repository.ts  ALL Prisma access; tenant-scoped finders
+  <domain>.service.ts     Business rules only; tenancy + ownership; AppError.
+                          May call prisma directly for plain CRUD
+  <domain>.repository.ts  OPTIONAL — transactional / multi-step flows only
   <domain>.serializer.ts  Output shaping (never returns raw rows / secrets)
   <domain>.test.ts        Colocated tests (vitest); multiple suites for one
                           domain live in <domain>/__tests__/
 ```
+
+Repository policy (hybrid): **plain single-table CRUD skips the repository and
+the service calls `prisma` directly.** Add `repository.ts` only when a flow
+spans multiple statements that must hold one invariant together — transactions
+(session creation, refresh-token rotation, password reset that revokes
+sessions), or the same query reused by several services. See
+`src/modules/auth/auth.repository.ts` for that case.
 
 Reference implementation: `src/modules/auth/` — a large module that follows
 this anatomy end-to-end (routes → schemas → controller → service → repository
@@ -48,10 +56,12 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
 
 ## Tenancy rules (non-negotiable)
 
-- Repositories expose tenant-scoped finders. List queries always filter by
-  `agencyId`. Single-resource reads use `findFirst({ where: { id, agencyId } })`
-  — **never** `findUnique({ where: { id } })` on a tenant-owned resource, or a
-  cross-tenant id would leak data.
+- Tenancy is enforced at the point of every query. Tenant-scoped finders live
+  in the repository **when one exists**; otherwise the service applies the
+  scope inline. List queries always filter by `agencyId`. Single-resource reads
+  use `findFirst({ where: { id, agencyId } })` — **never**
+  `findUnique({ where: { id } })` on a tenant-owned resource, or a cross-tenant
+  id would leak data.
 - A 404 (not 403) is returned when a resource is not found within the tenant —
   this avoids confirming other tenants' resource ids.
 - `req.auth.agencyId` is the only acceptable tenant source. Never trust an
@@ -67,8 +77,10 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
 
 ## Business rules
 
-- Keep services dependency-injected-testable: they call repository functions,
-  never `prisma` directly, so unit tests mock the repository boundary.
+- Keep services dependency-injected-testable. Plain CRUD calls `prisma`
+  directly; transactional/multi-step flows go through the repository. Unit
+  tests mock exactly one boundary: the repository when it exists, `@/lib/prisma`
+  otherwise — never both, never the ORM below it.
 - Errors use `AppError` (see `src/lib/response/AppError.ts`). Do not throw raw
   `Error` or status codes inline.
 - Audit: meaningful user actions call `recordAudit` with an `AuditAction`
@@ -76,8 +88,9 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
 
 ## Tests (colocated)
 
-- Unit tests mock the repository boundary (see
-  `src/modules/auth/__tests__/` — e.g. `auth.sessions.test.ts`).
+- Unit tests mock one boundary: the repository (when the module has one) or
+  `@/lib/prisma` directly (see `src/modules/auth/__tests__/` — e.g.
+  `auth.sessions.test.ts`, `auth.login.test.ts`).
 - Integration suites: extend `describeIntegration` from
   `src/__tests__/helpers/integration.ts` — they only run when
   `TEST_DATABASE_URL` is set (CI), and skip locally.
