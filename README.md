@@ -148,6 +148,12 @@ During a deploy the app restarts; because the failure path is rolled forward by 
 - **Metrics** — Prometheus at `GET /metrics` (before the rate limiter so scrapers are never throttled). Exposes `taskflow_`-prefixed process metrics plus per-route `http_requests_total`, `http_request_duration_seconds`, and `http_inflight_requests` with bounded labels (`route`, `status`, `client=authenticated|anonymous`). Point Prometheus at `http://<app>:5000/metrics` and use [Grafana 19659](https://grafana.com/grafana/dashboards/19659-bun/) for the defaults.
 - **Errors** — unhandled/`OperationalError`-unknown failures are captured to [Sentry](https://sentry.io) when `SENTRY_DSN` is set (no-op otherwise). Set `SENTRY_TRACES_SAMPLE_RATE` (default `0.1`) to trade tracing volume against cost.
 
+## Docs & guidelines
+
+- **Canonical module guide** — [`docs/module-guide.md`](docs/module-guide.md). Every feature module follows one anatomy: `routes → schemas → controller → service → repository → serializer → colocated tests`. No module touches `prisma` outside its `repository.ts`; tenant reads use `findFirst({ id, agencyId })` (→ 404); every endpoint ships a `describeRoute` and colocated tests.
+- **Feature specs** — [`docs/feature-specs.md`](docs/feature-specs.md). Back-of-the-envelope contracts for the upcoming Projects & Tasks modules (not built yet).
+- **Deferred work** — [`BACKLOG.md`](BACKLOG.md). Agencies/team management, billing, file uploads, multi-agency, concurrency, and why each was pushed.
+
 ## Project structure
 
 ```

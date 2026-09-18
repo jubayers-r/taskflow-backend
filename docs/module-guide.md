@@ -21,12 +21,13 @@ src/modules/<domain>/
   <domain>.service.ts     Business rules only; tenancy + ownership; AppError
   <domain>.repository.ts  ALL Prisma access; tenant-scoped finders
   <domain>.serializer.ts  Output shaping (never returns raw rows / secrets)
-  <domain>.test.ts        Colocated tests (vitest)
+  <domain>.test.ts        Colocated tests (vitest); multiple suites for one
+                          domain live in <domain>/__tests__/
 ```
 
-Reference implementation: `src/modules/projects/` — the first vertical slice
-that follows this anatomy end-to-end (see also `src/modules/auth/` for a
-large module with sub-services).
+Reference implementation: `src/modules/auth/` — a large module that follows
+this anatomy end-to-end (routes → schemas → controller → service → repository
+→ utils → colocated `__tests__`).
 
 ## Guard order (routes)
 
@@ -76,7 +77,7 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
 ## Tests (colocated)
 
 - Unit tests mock the repository boundary (see
-  `src/modules/projects/projects.test.ts`).
+  `src/modules/auth/__tests__/` — e.g. `auth.sessions.test.ts`).
 - Integration suites: extend `describeIntegration` from
   `src/__tests__/helpers/integration.ts` — they only run when
   `TEST_DATABASE_URL` is set (CI), and skip locally.
