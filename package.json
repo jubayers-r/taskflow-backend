@@ -1,6 +1,5 @@
 {
   "name": "taskflow-backend",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
@@ -17,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "verify": "bun run db:generate && bunx tsc --noEmit && bun run lint:check && bun run prettier:check && bun run test:coverage",
     "prepare": "husky"
   },
   "lint-staged": {
