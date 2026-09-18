@@ -1,3 +1,4 @@
+import { AppError } from '@/lib/response/AppError';
 import { isRedisEnabled, redis } from '@/lib/redis';
 import rateLimit, { type Options } from 'express-rate-limit';
 import RedisStore, { RedisReply } from 'rate-limit-redis';
@@ -23,6 +24,11 @@ const createLimiter = (prefix: string, options: Partial<Options> = {}) => {
     windowMs: FIFTEEN_MINUTES,
     standardHeaders: true,
     legacyHeaders: false,
+    // Route 429s through the global error handler so they share the unified
+    // `{ success, message, code, correlationId }` envelope.
+    handler: (_req, _res, next) => {
+      next(AppError.tooManyRequests());
+    },
     ...(store ? { store } : {}),
     ...options,
   });

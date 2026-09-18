@@ -1,26 +1,79 @@
 import { logger } from '@/lib/logger';
-import { AppError } from '@/lib/response/AppError';
+import { AppError, ErrorCode, ValidationErrorDetail } from '@/lib/response/AppError';
+import { Prisma } from '@/prisma/generated/client';
 import { NextFunction, Request, Response } from 'express';
-import { StatusCodes as httpStatus } from 'http-status-codes';
+import { ZodError } from 'zod';
+
+/**
+ * Translates a Prisma known request error into an operational AppError so that
+ * database constraint violations surface as meaningful HTTP responses instead
+ * of opaque 500s.
+ */
+const fromPrismaError = (err: Prisma.PrismaClientKnownRequestError): AppError | null => {
+  switch (err.code) {
+    case 'P2002': {
+      const target = err.meta?.target;
+      const fields = Array.isArray(target) ? (target as string[]).join(', ') : undefined;
+      return AppError.conflict(
+        fields ? `A record with this ${fields} already exists` : 'Unique constraint violation',
+      );
+    }
+    case 'P2025':
+      return AppError.notFound('The requested record was not found');
+    case 'P2003':
+      return AppError.conflict('Related record constraint violation');
+    case 'P2000':
+      return AppError.badRequest('A provided value is too long for the field');
+    default:
+      return null;
+  }
+};
+
+const fromZodError = (err: ZodError): AppError => {
+  const errors: ValidationErrorDetail[] = err.issues.map((issue) => ({
+    field: issue.path.join('.') || '_root',
+    message: issue.message,
+    code: issue.code,
+  }));
+  return AppError.unprocessable('Validation failed', errors);
+};
+
+const isJsonParseError = (err: Error): boolean => {
+  return err instanceof SyntaxError && 'body' in err;
+};
 
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
-  const requestId = req.correlationId;
+  const correlationId = req.correlationId;
 
-  // Handle expected operational errors thrown via AppError
-  if (err instanceof AppError && err.isOperational) {
-    return res.status(err.statusCode).json({
+  const appError = (() => {
+    if (err instanceof AppError) return err;
+    if (err instanceof ZodError) return fromZodError(err);
+    if (err instanceof Prisma.PrismaClientKnownRequestError) return fromPrismaError(err);
+    if (isJsonParseError(err)) return AppError.badRequest('Malformed JSON in request body');
+    return null;
+  })();
+
+  if (appError) {
+    // Only unexpected (non-operational) errors deserve an error-level log.
+    if (!appError.isOperational) {
+      logger.error({ err, correlationId, path: req.path }, 'Unhandled error');
+    }
+
+    return res.status(appError.statusCode).json({
       success: false,
-      message: err.message,
-      errors: err.errors,
-      correlationId: requestId,
+      message: appError.message,
+      code: appError.code,
+      errors: appError.errors,
+      correlationId,
     });
   }
 
-  // Handle unexpected bugs or system crashes
-  logger.error({ err, requestId, path: req.path }, 'Unhandled error');
-  return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+  // Unknown/unexpected errors: log with the original and return a safe 500.
+  logger.error({ err, correlationId, path: req.path }, 'Unhandled error');
+  return res.status(500).json({
     success: false,
     message: 'Internal server error',
-    correlationId: requestId,
+    code: ErrorCode.INTERNAL_ERROR,
+    correlationId,
   });
 }
