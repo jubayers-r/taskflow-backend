@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger';
+import { captureException } from '@/lib/sentry';
 import { AppError, ErrorCode, ValidationErrorDetail } from '@/lib/response/AppError';
 import { Prisma } from '@/prisma/generated/client';
 import { NextFunction, Request, Response } from 'express';
@@ -54,9 +55,11 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   })();
 
   if (appError) {
-    // Only unexpected (non-operational) errors deserve an error-level log.
+    // Only unexpected (non-operational) errors deserve an error-level log and
+    // are pushed to the error tracker (5xx = infrastructure or code bug).
     if (!appError.isOperational) {
       logger.error({ err, correlationId, path: req.path }, 'Unhandled error');
+      captureException(err, req);
     }
 
     return res.status(appError.statusCode).json({
@@ -70,6 +73,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
 
   // Unknown/unexpected errors: log with the original and return a safe 500.
   logger.error({ err, correlationId, path: req.path }, 'Unhandled error');
+  captureException(err, req);
   return res.status(500).json({
     success: false,
     message: 'Internal server error',

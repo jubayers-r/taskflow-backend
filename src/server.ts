@@ -5,9 +5,12 @@ import app from './app';
 import { env } from './config';
 
 import { logger } from './lib/logger';
+import { initSentry } from './lib/sentry';
 import { startCleanupJob } from './jobs/cleanup.job';
 import { shutdown } from './utils/gracefulShutdown';
 import { startEmailWorker } from './workers/email.worker';
+
+initSentry();
 
 const server = http.createServer(app);
 

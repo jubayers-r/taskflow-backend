@@ -45,6 +45,10 @@ const envSchema = z
     LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
     LOCKOUT_DURATION_MINUTES: z.coerce.number().int().min(1).default(15),
 
+    // Sentry (error tracking) — optional; disabled when no DSN is configured.
+    SENTRY_DSN: z.string().optional(),
+    SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+
     // Email config
     EMAIL_PROVIDER: z.enum(['gmail', 'resend']).default('gmail'),
     EMAIL_FROM: z.email().trim(),
