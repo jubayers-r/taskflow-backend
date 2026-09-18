@@ -67,6 +67,8 @@ model PaymentHistory {
     status    PaymentStatus
     message   String? // e.g., "Customer authenticated via 3DS"
     createdAt DateTime      @default(now())
+
+    @@map("payment_history")
 }
 
 enum PlanInterval {
