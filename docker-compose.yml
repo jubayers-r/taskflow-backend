@@ -34,6 +34,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- One-shot schema migration (runs before the app starts) ---
+  migrate:
+    build: .
+    restart: 'no'
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/taskflow_db?schema=public
+    command: ['bunx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- API ---
+  app:
+    build: .
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the datastores are reached by service name.
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/taskflow_db?schema=public
+      REDIS_HOST: redis
+    ports:
+      - '5000:5000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   redis_data:
   postgres_data:
