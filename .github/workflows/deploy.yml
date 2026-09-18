@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image version
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          echo "value=${tag:-latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
+
+  deploy:
+    needs: build-and-push
+    if: ${{ needs.build-and-push.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        # The target server is expected to have:
+        #   - this repo checked out at /opt/taskflow
+        #   - a populated .env.production alongside docker-compose.prod.yml
+        #   - Docker + the compose plugin installed
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/taskflow
+            git pull --ff-only
+            docker pull ghcr.io/${{ github.repository }}:${{ needs.build-and-push.outputs.version }}
+            COMPOSE_FILE=docker-compose.prod.yml \
+              docker compose --env-file .env.production run --rm migrate
+            COMPOSE_FILE=docker-compose.prod.yml \
+              docker compose --env-file .env.production up -d --force-recreate app
+            docker image prune -f

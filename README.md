@@ -22,20 +22,22 @@ bun run dev               # http://localhost:5000
 
 ## Scripts
 
-| Script                      | Description                             |
-| --------------------------- | --------------------------------------- |
-| `bun run dev`               | Start the dev server in watch mode      |
-| `bun run db:generate`       | Generate the Prisma client              |
-| `bun run db:migrate:dev`    | Create/apply a migration in development |
-| `bun run db:migrate:deploy` | Apply pending migrations in production  |
-| `bun run db:seed`           | Seed the database                       |
-| `bun run lint:check`        | Run ESLint                              |
-| `bun run lint:fix`          | Run ESLint with `--fix`                 |
-| `bun run prettier:check`    | Check formatting                        |
-| `bun run prettier:fix`      | Write formatting                        |
-| `bun run lint-prettier`     | Lint and format check                   |
-| `bun run test`              | Run the Vitest suite once               |
-| `bun run test:watch`        | Run Vitest in watch mode                |
+| Script                      | Description                                         |
+| --------------------------- | --------------------------------------------------- |
+| `bun run dev`               | Start the dev server in watch mode                  |
+| `bun run db:generate`       | Generate the Prisma client                          |
+| `bun run db:migrate:dev`    | Create/apply a migration in development             |
+| `bun run db:migrate:deploy` | Apply pending migrations in production              |
+| `bun run db:seed`           | Seed the database                                   |
+| `bun run lint:check`        | Run ESLint                                          |
+| `bun run lint:fix`          | Run ESLint with `--fix`                             |
+| `bun run prettier:check`    | Check formatting                                    |
+| `bun run prettier:fix`      | Write formatting                                    |
+| `bun run lint-prettier`     | Lint and format check                               |
+| `bun run test`              | Run the Vitest suite once                           |
+| `bun run test:watch`        | Run Vitest in watch mode                            |
+| `bun run test:coverage`     | Run Vitest with a coverage gate                     |
+| `bun run verify`            | Generate client + typecheck + lint + format + tests |
 
 ## Environment variables
 
@@ -109,7 +111,42 @@ Adding an endpoint? Register its docs with a single `describeRoute({ ... })` cal
 docker compose up -d --build
 ```
 
-`docker-compose.yml` starts PostgreSQL (`taskflow_db`, port 5432) and Redis (port 6379). The `Dockerfile` uses Bun for both build and runtime.
+`docker-compose.yml` starts PostgreSQL (`taskflow_db`, port 5432) and Redis (port 6379), runs migrations, then starts the API. The `Dockerfile` uses Bun for both build and runtime:
+
+- three stages: `builder` (full deps + Prisma client generation), `migrate` (Prisma CLI only, for one-shot `migrate deploy`), and `runner` (production deps only, `USER bun`, `/health/live` HEALTHCHECK).
+
+## Production deployment
+
+```bash
+cp .env.production.example .env.production   # fill in real secrets
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
+
+`docker-compose.prod.yml` adds, relative to the dev stack:
+
+- **Hardened runtime** — `USE_REDIS=true` (default token/rate-limit store), non-root container, health/readiness probes, rotated JSON logs.
+- **Automated schema migration** — a `migrate` service that runs `prisma migrate deploy` and gates the app on its success.
+- **Nightly backups** — a `postgres-backup` sidecar runs `pg_dump` at 02:00 UTC into a named volume with retention (14 days / 4 weeks / 3 months).
+
+  A backup on the same disk is not a backup. Push it offsite daily:
+  `RCLONE_REMOTE="backups3:taskflow-backups" ./scripts/backup-offsite.sh` (cron the host execute this, or run it in a scheduler container).
+
+  Test restores before you need them:
+  `DATABASE_URL="..." ./scripts/restore-db.sh /backups/daily/db_*.dump.gz`
+
+- **Uptime monitoring (optional)** — `uptime-kuma` is available under the `monitoring` profile; point it at `/health/live`.
+
+### Zero-downtime deploys
+
+The GitHub Actions workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the image to GitHub Container Registry on a `v*` tag (or manual dispatch), then over SSH pulls the image, runs `migrate deploy`, and recreates the app container. The server needs this repo checked out at `/opt/taskflow` with a populated `.env.production`, plus the repository secrets `PROD_HOST`, `PROD_USER`, `SSH_PRIVATE_KEY`.
+
+During a deploy the app restarts; because the failure path is rolled forward by `migrate deploy`, schema changes are never ahead of the running code for more than the container restart window.
+
+## Observability
+
+- **Logs** — structured JSON via [pino](https://getpino.io), request-correlated with `X-Request-Id`. Sensitive fields (passwords, OTP codes, tokens, authorization headers) are redacted at the sink. Request logs are level-aware: `error` ≥500, `warn` ≥400, `info` otherwise, and `debug` for health/metrics probes so scrapers don't flood production logs.
+- **Metrics** — Prometheus at `GET /metrics` (before the rate limiter so scrapers are never throttled). Exposes `taskflow_`-prefixed process metrics plus per-route `http_requests_total`, `http_request_duration_seconds`, and `http_inflight_requests` with bounded labels (`route`, `status`, `client=authenticated|anonymous`). Point Prometheus at `http://<app>:5000/metrics` and use [Grafana 19659](https://grafana.com/grafana/dashboards/19659-bun/) for the defaults.
+- **Errors** — unhandled/`OperationalError`-unknown failures are captured to [Sentry](https://sentry.io) when `SENTRY_DSN` is set (no-op otherwise). Set `SENTRY_TRACES_SAMPLE_RATE` (default `0.1`) to trade tracing volume against cost.
 
 ## Project structure
 
