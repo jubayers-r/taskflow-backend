@@ -15,15 +15,35 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
 
   const startedAt = performance.now();
   res.on('finish', () => {
-    req.log.info(
-      {
-        method: req.method,
-        url: req.originalUrl,
-        statusCode: res.statusCode,
-        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
-      },
-      'Request completed',
-    );
+    const statusCode = res.statusCode;
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+
+    // Drop to debug for the probing endpoints a scraper hits every few
+    // seconds, so normal traffic stays readable in production logs.
+    const isProbe =
+      req.path.startsWith('/health') ||
+      req.path === '/metrics' ||
+      req.path === '/openapi.json' ||
+      req.path.startsWith('/docs');
+
+    const payload = {
+      method: req.method,
+      url: req.originalUrl,
+      statusCode,
+      durationMs,
+      responseSize: res.getHeader('content-length'),
+      clientIp: req.clientMeta?.ip,
+    };
+
+    if (isProbe) {
+      req.log.debug(payload, 'Request completed');
+    } else if (statusCode >= 500) {
+      req.log.error(payload, 'Request completed');
+    } else if (statusCode >= 400) {
+      req.log.warn(payload, 'Request completed');
+    } else {
+      req.log.info(payload, 'Request completed');
+    }
   });
 
   // Everything downstream (including async continuations) can read the context.
