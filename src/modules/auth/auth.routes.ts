@@ -161,6 +161,7 @@ describeRoute({
   path: '/api/v1/auth/me',
   tags: ['Auth'],
   summary: 'Get the currently authenticated user',
+  security: true,
   responses: { 200: 'Current user', 401: 'Missing or invalid access token' },
 });
 router.get('/me', authenticate, AuthController.meHandler);
@@ -170,6 +171,7 @@ describeRoute({
   path: '/api/v1/auth/sessions',
   tags: ['Auth'],
   summary: 'List active sessions for the current user',
+  security: true,
   responses: { 200: 'Active sessions', 401: 'Missing or invalid access token' },
 });
 router.get('/sessions', authenticate, AuthController.listSessionsHandler);
@@ -179,6 +181,7 @@ describeRoute({
   path: '/api/v1/auth/sessions',
   tags: ['Auth'],
   summary: 'Revoke every session except the current one',
+  security: true,
   responses: { 200: 'Other sessions revoked', 401: 'Missing or invalid access token' },
 });
 router.delete('/sessions', authenticate, AuthController.revokeOtherSessionsHandler);
@@ -188,6 +191,7 @@ describeRoute({
   path: '/api/v1/auth/sessions/{id}',
   tags: ['Auth'],
   summary: 'Revoke a specific session',
+  security: true,
   responses: {
     200: 'Session revoked',
     401: 'Missing or invalid access token',

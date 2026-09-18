@@ -28,4 +28,18 @@ describe('OpenAPI document', () => {
       ]),
     );
   });
+
+  it('declares a bearer security scheme and applies it to protected routes', () => {
+    const doc = buildOpenApiDocument() as unknown as {
+      components?: { securitySchemes?: Record<string, unknown> };
+      paths: Record<string, Record<string, { security?: unknown }>>;
+    };
+
+    expect(doc.components?.securitySchemes?.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+    });
+    expect(doc.paths['/api/v1/auth/me']?.get?.security).toEqual([{ bearerAuth: [] }]);
+    expect(doc.paths['/api/v1/auth/login']?.post?.security).toBeUndefined();
+  });
 });

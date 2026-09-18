@@ -13,6 +13,8 @@ export interface RouteDoc {
   body?: ZodType;
   /** Map of HTTP status code to response description. */
   responses?: Record<number, string>;
+  /** Marks the route as requiring a Bearer access token. */
+  security?: boolean;
 }
 
 /**
@@ -21,6 +23,12 @@ export interface RouteDoc {
  */
 export const registry = new OpenAPIRegistry();
 
+registry.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 /**
  * One-line OpenAPI documentation for a route. Keep it next to the route
  * definition so adding an endpoint stays a single extra call:
@@ -28,12 +36,21 @@ export const registry = new OpenAPIRegistry();
  *   describeRoute({ method: 'post', path: '/auth/login', body: AuthSchema.loginSchema,
  *     summary: 'Log in', responses: { 200: 'Tokens issued', 401: 'Invalid credentials' } });
  */
-export const describeRoute = ({ method, path, summary, tags, body, responses }: RouteDoc) => {
+export const describeRoute = ({
+  method,
+  path,
+  summary,
+  tags,
+  body,
+  responses,
+  security,
+}: RouteDoc) => {
   registry.registerPath({
     method,
     path,
     summary,
     tags,
+    security: security ? [{ bearerAuth: [] }] : undefined,
     request: body ? { body: { content: { 'application/json': { schema: body } } } } : undefined,
     responses: Object.fromEntries(
       Object.entries(responses ?? { 200: 'Successful response' }).map(([code, description]) => [
