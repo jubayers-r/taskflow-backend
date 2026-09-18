@@ -11,8 +11,10 @@ import { env } from './config';
 
 import { buildOpenApiDocument } from './lib/openapi';
 import { emailBullQueue } from './lib/queue';
+import { collectMetrics, metricsRegistry } from './lib/metrics';
 import { attachClientMeta } from './middlewares/clientMeta.middleware';
 import { errorHandler } from './middlewares/errorHandler.middleware';
+import { metricsMiddleware } from './middlewares/metrics.middleware';
 import { apiLimiter } from './middlewares/rateLimiter.middleware';
 import { livenessHandler, readinessHandler } from './modules/health/health.controller';
 import { HealthRoutes } from './modules/health/health.routes';
@@ -51,6 +53,7 @@ export const createApp = (): Application => {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(requestIdMiddleware);
+  app.use(metricsMiddleware);
   app.use(attachClientMeta);
   app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
   app.use(helmet());
@@ -67,6 +70,13 @@ export const createApp = (): Application => {
   // Kubernetes-style aliases
   app.get('/healthz', livenessHandler);
   app.get('/readyz', readinessHandler);
+
+  // Prometheus metrics (text exposition format), mounted before the API limiter
+  // so the scraper is never throttled.
+  app.get('/metrics', async (_req, res) => {
+    res.setHeader('Content-Type', metricsRegistry.contentType);
+    res.end(await collectMetrics());
+  });
 
   // Bull Board is only mounted when the queue is Redis-backed
   if (emailBullQueue) {
