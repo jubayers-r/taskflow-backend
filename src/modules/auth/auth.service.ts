@@ -469,29 +469,58 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
 };
 
 // ==========================================
-// 8. CURRENT USER
+// 8. SESSIONS
 // ==========================================
-const getCurrentUser = async (userId: string) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+const listSessions = async (userId: string, currentSessionId: string) => {
+  const sessions = await prisma.session.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
     select: {
       id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      agencyId: true,
-      profileImage: true,
-      emailVerifiedAt: true,
+      userAgent: true,
+      ipAddress: true,
+      lastActiveAt: true,
       createdAt: true,
+      expiresAt: true,
     },
+    orderBy: { lastActiveAt: 'desc' },
   });
 
-  if (!user) {
-    throw AppError.notFound('User not found');
+  return sessions.map((session) => ({
+    ...session,
+    isCurrent: session.id === currentSessionId,
+  }));
+};
+
+const revokeSession = async (userId: string, sessionId: string) => {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, revokedAt: true },
+  });
+
+  // Treat missing/foreign sessions as not found to avoid leaking session ids.
+  if (!session || session.userId !== userId) {
+    throw AppError.notFound('Session not found');
   }
 
-  return user;
+  if (session.revokedAt) {
+    return { success: true };
+  }
+
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: { revokedAt: new Date(), fcmToken: null },
+  });
+
+  return { success: true };
+};
+
+const revokeOtherSessions = async (userId: string, currentSessionId: string) => {
+  const result = await prisma.session.updateMany({
+    where: { userId, id: { not: currentSessionId }, revokedAt: null },
+    data: { revokedAt: new Date(), fcmToken: null },
+  });
+
+  return { revoked: result.count };
 };
 
 export const AuthService = {
@@ -502,5 +531,7 @@ export const AuthService = {
   logout,
   forgotPassword,
   resetPassword,
-  getCurrentUser,
+  listSessions,
+  revokeSession,
+  revokeOtherSessions,
 };

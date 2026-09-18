@@ -22,6 +22,12 @@ export type ValidatedData<T extends RequestSchema> = {
  */
 export const validatedBody = <T>(req: Request): T => req.validated.body as T;
 
+/** Reads the sanitized/coerced route params produced by `validateRequest`. */
+export const validatedParams = <T>(req: Request): T => req.validated.params as T;
+
+/** Reads the sanitized/coerced query produced by `validateRequest`. */
+export const validatedQuery = <T>(req: Request): T => req.validated.query as T;
+
 /**
  * Validates incoming HTTP requests against isolated body, query, and params schemas.
  * Attaches sanitized, coerced output to `req.validated`.

@@ -61,12 +61,19 @@ const resetPasswordSchema = z
   })
   .strict();
 
+const sessionIdParamSchema = z
+  .object({
+    id: z.uuid('Invalid session id'),
+  })
+  .strict();
+
 export const AuthSchema = {
   registerSchema,
   loginSchema,
   verifyOtpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  sessionIdParamSchema,
 };
 
 export type AuthInputType = {
@@ -75,4 +82,5 @@ export type AuthInputType = {
   verifyOtpPayload: z.infer<typeof verifyOtpSchema>;
   forgotPasswordPayload: z.infer<typeof forgotPasswordSchema>;
   resetPasswordPayload: z.infer<typeof resetPasswordSchema>;
+  sessionIdParams: z.infer<typeof sessionIdParamSchema>;
 };

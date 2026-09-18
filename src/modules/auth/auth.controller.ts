@@ -1,9 +1,10 @@
 // auth.controller.ts
 import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
-import { validatedBody } from '@/middlewares/validateRequest.middleware';
+import { validatedBody, validatedParams } from '@/middlewares/validateRequest.middleware';
 import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
+import { UsersService } from '../users/users.service';
 import { AuthInputType } from './auth.schema';
 import { AuthService } from './auth.service';
 
@@ -101,8 +102,33 @@ const meHandler = catchAsync(async (req: Request, res: Response) => {
   if (!req.auth) {
     throw AppError.unauthorized();
   }
-  const user = await AuthService.getCurrentUser(req.auth.userId);
+  const user = await UsersService.getCurrentUser(req.auth.userId);
   return sendResponse.ok(res, user, 'Current user');
+});
+
+const listSessionsHandler = catchAsync(async (req: Request, res: Response) => {
+  if (!req.auth) {
+    throw AppError.unauthorized();
+  }
+  const sessions = await AuthService.listSessions(req.auth.userId, req.auth.sessionId);
+  return sendResponse.ok(res, sessions, 'Active sessions');
+});
+
+const revokeSessionHandler = catchAsync(async (req: Request, res: Response) => {
+  if (!req.auth) {
+    throw AppError.unauthorized();
+  }
+  const { id } = validatedParams<AuthInputType['sessionIdParams']>(req);
+  const result = await AuthService.revokeSession(req.auth.userId, id);
+  return sendResponse.ok(res, result, 'Session revoked');
+});
+
+const revokeOtherSessionsHandler = catchAsync(async (req: Request, res: Response) => {
+  if (!req.auth) {
+    throw AppError.unauthorized();
+  }
+  const result = await AuthService.revokeOtherSessions(req.auth.userId, req.auth.sessionId);
+  return sendResponse.ok(res, result, 'Other sessions revoked');
 });
 
 export const AuthController = {
@@ -114,4 +140,7 @@ export const AuthController = {
   forgotPasswordHandler,
   resetPasswordHandler,
   meHandler,
+  listSessionsHandler,
+  revokeSessionHandler,
+  revokeOtherSessionsHandler,
 };

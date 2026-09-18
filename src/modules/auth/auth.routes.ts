@@ -29,6 +29,7 @@ router.get('/', (_req, res) =>
         refresh: 'POST /api/v1/auth/refresh',
         logout: 'POST /api/v1/auth/logout',
         me: 'GET /api/v1/auth/me',
+        sessions: 'GET /api/v1/auth/sessions',
         forgotPassword: 'POST /api/v1/auth/forgot-password',
         resetPassword: 'POST /api/v1/auth/reset-password',
       },
@@ -143,5 +144,41 @@ describeRoute({
   responses: { 200: 'Current user', 401: 'Missing or invalid access token' },
 });
 router.get('/me', authenticate, AuthController.meHandler);
+
+describeRoute({
+  method: 'get',
+  path: '/api/v1/auth/sessions',
+  tags: ['Auth'],
+  summary: 'List active sessions for the current user',
+  responses: { 200: 'Active sessions', 401: 'Missing or invalid access token' },
+});
+router.get('/sessions', authenticate, AuthController.listSessionsHandler);
+
+describeRoute({
+  method: 'delete',
+  path: '/api/v1/auth/sessions',
+  tags: ['Auth'],
+  summary: 'Revoke every session except the current one',
+  responses: { 200: 'Other sessions revoked', 401: 'Missing or invalid access token' },
+});
+router.delete('/sessions', authenticate, AuthController.revokeOtherSessionsHandler);
+
+describeRoute({
+  method: 'delete',
+  path: '/api/v1/auth/sessions/{id}',
+  tags: ['Auth'],
+  summary: 'Revoke a specific session',
+  responses: {
+    200: 'Session revoked',
+    401: 'Missing or invalid access token',
+    404: 'Session not found',
+  },
+});
+router.delete(
+  '/sessions/:id',
+  authenticate,
+  validateRequest({ params: AuthSchema.sessionIdParamSchema }),
+  AuthController.revokeSessionHandler,
+);
 
 export const AuthRoutes = router;
