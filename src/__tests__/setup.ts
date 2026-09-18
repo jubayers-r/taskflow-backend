@@ -23,3 +23,4 @@ process.env.OTP_PEPPER_SECRET = 'test-otp-pepper-secret-at-least-32-characters';
 process.env.EMAIL_PROVIDER = 'gmail';
 process.env.EMAIL_FROM = 'test@example.com';
 process.env.GMAIL_APP_PASSWORD = 'dummy-gmail-app-password';
+process.env.CONFIG_ENCRYPTION_KEY = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';

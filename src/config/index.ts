@@ -49,6 +49,10 @@ const envSchema = z
     SENTRY_DSN: z.string().optional(),
     SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
 
+    // AES-256-GCM key (base64-encoded 32 bytes) for encrypting sensitive
+    // configuration values at rest. Required in production; validated at boot.
+    CONFIG_ENCRYPTION_KEY: z.string().optional(),
+
     // Email config
     EMAIL_PROVIDER: z.enum(['gmail', 'resend']).default('gmail'),
     EMAIL_FROM: z.email().trim(),
@@ -80,6 +84,15 @@ const envSchema = z
         code: 'custom',
         message: 'RESEND_API_KEY is required when EMAIL_PROVIDER is "resend"',
         path: ['RESEND_API_KEY'],
+      });
+    }
+
+    if (data.NODE_ENV === 'production' && !data.CONFIG_ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'CONFIG_ENCRYPTION_KEY is required in production (base64-encoded 32-byte AES-256-GCM key)',
+        path: ['CONFIG_ENCRYPTION_KEY'],
       });
     }
   });

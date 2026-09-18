@@ -6,11 +6,18 @@ import { env } from './config';
 
 import { logger } from './lib/logger';
 import { initSentry } from './lib/sentry';
+import { validateEncryptionKey } from './lib/crypto';
 import { startCleanupJob } from './jobs/cleanup.job';
 import { shutdown } from './utils/gracefulShutdown';
 import { startEmailWorker } from './workers/email.worker';
 
 initSentry();
+
+// Fail fast when a config encryption key is set but malformed or unusable,
+// rather than discovering it on the first decrypt at request time.
+if (env.CONFIG_ENCRYPTION_KEY) {
+  validateEncryptionKey();
+}
 
 const server = http.createServer(app);
 

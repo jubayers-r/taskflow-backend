@@ -2,6 +2,7 @@ import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { apiReference } from '@scalar/express-api-reference';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Application } from 'express';
@@ -50,13 +51,33 @@ export const createApp = (): Application => {
 
   app.use('/public', express.static(path.join(process.cwd(), 'public')));
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Cap request bodies: the API only exchanges JSON and form payloads, and
+  // metadata-only attachments at this scope stay well under 1 MB.
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(compression());
   app.use(requestIdMiddleware);
   app.use(metricsMiddleware);
   app.use(attachClientMeta);
   app.use(cors({ origin: env.ALLOWED_ORIGINS, credentials: true }));
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          'default-src': ["'self'"],
+          'script-src': ["'self'"],
+          // The health dashboard renders an inline <style> block.
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'img-src': ["'self'", 'data:'],
+          'object-src': ["'none'"],
+          'base-uri': ["'self'"],
+          'frame-ancestors': ["'none'"],
+        },
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    }),
+  );
   app.use(cookieParser());
 
   app.use('/api/v1', apiLimiter, Routes);
