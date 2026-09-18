@@ -15,19 +15,19 @@ export type ValidatedData<T extends RequestSchema> = {
   params: T['params'] extends ZodType<infer P> ? P : undefined;
 };
 
-// Strongly-typed request handler helper for controllers
-export type ValidatedRequestHandler<T extends RequestSchema> = (
-  req: Request,
-  res: Response<unknown, { validated: ValidatedData<T> }>,
-  next: NextFunction,
-) => void | Promise<void>;
+/**
+ * Reads the sanitized/coerced body produced by `validateRequest`. Controllers
+ * must use this instead of `req.body` so Zod transforms (trim/lowercase/
+ * defaults) and strict-key stripping actually take effect.
+ */
+export const validatedBody = <T>(req: Request): T => req.validated.body as T;
 
 /**
  * Validates incoming HTTP requests against isolated body, query, and params schemas.
- * Attaches sanitized, coerced output to `res.locals.validated`.
+ * Attaches sanitized, coerced output to `req.validated`.
  */
 export const validateRequest = <T extends RequestSchema>(schemas: T): RequestHandler => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     const errorDetails: ValidationErrorDetail[] = [];
     const validatedOutput: Record<string, unknown> = {};
 
@@ -61,8 +61,8 @@ export const validateRequest = <T extends RequestSchema>(schemas: T): RequestHan
       return next(AppError.unprocessable('Validation failed on incoming request', errorDetails));
     }
 
-    // Persist validated and coerced output without mutating Express internal structures
-    res.locals.validated = validatedOutput as ValidatedData<T>;
+    // Persist validated and coerced output for controllers to consume.
+    req.validated = validatedOutput as ValidatedData<T>;
     return next();
   };
 };

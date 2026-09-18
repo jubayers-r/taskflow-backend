@@ -1,8 +1,10 @@
 // auth.controller.ts
 import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
+import { validatedBody } from '@/middlewares/validateRequest.middleware';
 import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
+import { AuthInputType } from './auth.schema';
 import { AuthService } from './auth.service';
 
 const REFRESH_COOKIE_NAME = 'jid';
@@ -19,27 +21,30 @@ const getCookieOptions = (maxAgeMs: number): CookieOptions => ({
 const extractClientMeta = (req: Request) => req.clientMeta;
 
 const registerHandler = catchAsync(async (req: Request, res: Response) => {
-  const result = await AuthService.register(req.body);
+  const payload = validatedBody<AuthInputType['registerPayload']>(req);
+  const result = await AuthService.register(payload);
 
-  req.log?.info({ email: req.body.email }, 'User registered successfully');
+  req.log.info({ email: payload.email }, 'User registered successfully');
   return sendResponse.ok(res, result.user, result.message);
 });
 
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
+  const payload = validatedBody<AuthInputType['loginPayload']>(req);
   const meta = extractClientMeta(req);
-  const { accessToken, refreshToken, expiresAt } = await AuthService.login(req.body, meta);
+  const { accessToken, refreshToken, expiresAt } = await AuthService.login(payload, meta);
 
   const maxAge = Math.max(0, expiresAt.getTime() - Date.now());
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(maxAge));
 
-  req.log?.info({ email: req.body.email }, 'User logged in successfully');
+  req.log.info({ email: payload.email }, 'User logged in successfully');
   return sendResponse.ok(res, { accessToken }, 'User logged in successfully');
 });
 
 const verifyOtpHandler = catchAsync(async (req: Request, res: Response) => {
+  const payload = validatedBody<AuthInputType['verifyOtpPayload']>(req);
   const meta = extractClientMeta(req);
 
-  const result = await AuthService.verifyOtpAndCompleteAction(req.body, meta);
+  const result = await AuthService.verifyOtpAndCompleteAction(payload, meta);
 
   return sendResponse.ok(res, result, 'Verification successful');
 });
@@ -60,16 +65,18 @@ const refreshHandler = catchAsync(async (req: Request, res: Response) => {
 });
 
 const forgotPasswordHandler = catchAsync(async (req: Request, res: Response) => {
-  const result = await AuthService.forgotPassword(req.body);
+  const payload = validatedBody<AuthInputType['forgotPasswordPayload']>(req);
+  const result = await AuthService.forgotPassword(payload);
 
-  req.log?.info({ email: req.body.email }, 'User forgot password');
+  req.log.info({ email: payload.email }, 'User forgot password');
   return sendResponse.ok(res, result, 'Password reset email sent successfully');
 });
 
 const resetPasswordHandler = catchAsync(async (req: Request, res: Response) => {
-  const result = await AuthService.resetPassword(req.body);
+  const payload = validatedBody<AuthInputType['resetPasswordPayload']>(req);
+  const result = await AuthService.resetPassword(payload);
 
-  req.log?.info('User reset password');
+  req.log.info('User reset password');
   return sendResponse.ok(res, result, 'Password reset successfully');
 });
 
@@ -86,7 +93,7 @@ const logoutHandler = catchAsync(async (req: Request, res: Response) => {
     path: AUTH_COOKIE_PATH,
   });
 
-  req.log?.info('User logged out');
+  req.log.info('User logged out');
   return sendResponse.ok(res, null, 'Logged out successfully');
 });
 
