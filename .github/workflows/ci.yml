@@ -8,9 +8,26 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: taskflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow_test?schema=public
       JWT_ACCESS_SECRET: ci-access-secret
       JWT_REFRESH_SECRET: ci-refresh-secret
       OTP_PEPPER_SECRET: ci-otp-pepper-secret-that-is-at-least-32-characters
@@ -33,6 +50,9 @@ jobs:
       - name: Generate Prisma client
         run: bunx prisma generate
 
+      - name: Apply migrations
+        run: bunx prisma migrate deploy
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
@@ -42,5 +62,11 @@ jobs:
       - name: Format check
         run: bun run prettier:check
 
-      - name: Test
-        run: bun run test
+      - name: Test with coverage
+        run: bun run test:coverage
+
+      - name: Dependency audit
+        # Report known advisories without failing the build until a triage
+        # policy (severity threshold) is agreed.
+        run: bun audit
+        continue-on-error: true
