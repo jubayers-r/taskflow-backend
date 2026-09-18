@@ -53,6 +53,7 @@ const register = async (payload: AuthInputType['registerPayload']) => {
         profileImage,
         agencyId: agencyId ?? null,
         isAgreeWithTerms,
+        termsAgreedAt: new Date(),
       },
       create: {
         email: normalizedEmail,
@@ -63,6 +64,7 @@ const register = async (payload: AuthInputType['registerPayload']) => {
         profileImage,
         agencyId: agencyId ?? null,
         isAgreeWithTerms,
+        termsAgreedAt: new Date(),
         isActive: true,
         isRestricted: false,
       },
