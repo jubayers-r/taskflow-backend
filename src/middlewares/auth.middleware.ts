@@ -1,5 +1,5 @@
-import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/response/AppError';
+import { findSessionWithAccountState } from '@/modules/auth/auth.repository';
 import { AuthUtils } from '@/modules/auth/auth.utils';
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 import catchAsync from '@/utils/catchAsync';
@@ -33,14 +33,7 @@ export const authenticate = catchAsync(async (req: Request, _res: Response, next
     throw AppError.unauthorized('Invalid access token');
   }
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: {
-      revokedAt: true,
-      expiresAt: true,
-      user: { select: { isActive: true, isRestricted: true } },
-    },
-  });
+  const session = await findSessionWithAccountState(sessionId);
 
   if (!session || session.revokedAt || new Date() > session.expiresAt) {
     throw AppError.unauthorized('Session has expired or been revoked');

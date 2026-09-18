@@ -2,13 +2,13 @@
 import { env } from '@/config';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import { cache } from '@/lib/cache';
-import { prisma } from '@/lib/prisma';
 import { emailQueue } from '@/lib/queue';
 import { AppError } from '@/lib/response/AppError';
 import { Prisma } from '@/prisma/generated/client';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { AuthInputType } from './auth.schema';
+import * as repo from './auth.repository';
+import { AuthInputType } from './auth.schemas';
 import { AuthUtils } from './auth.utils';
 import { OtpService } from './otp.service';
 
@@ -29,11 +29,7 @@ const register = async (payload: AuthInputType['registerPayload']) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // Check existing verified user
-  const existingUser = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, emailVerifiedAt: true },
-  });
+  const existingUser = await repo.findUserByEmailVerifyState(normalizedEmail);
 
   if (existingUser?.emailVerifiedAt) {
     throw AppError.conflict('An account with this email already exists');
@@ -43,37 +39,16 @@ const register = async (payload: AuthInputType['registerPayload']) => {
 
   let user;
   try {
-    user = await prisma.user.upsert({
-      where: { email: normalizedEmail },
-      update: {
-        passwordHash,
-        firstName,
-        lastName,
-        gender,
-        profileImage,
-        agencyId: agencyId ?? null,
-        isAgreeWithTerms,
-        termsAgreedAt: new Date(),
-      },
-      create: {
-        email: normalizedEmail,
-        passwordHash,
-        firstName,
-        lastName,
-        gender,
-        profileImage,
-        agencyId: agencyId ?? null,
-        isAgreeWithTerms,
-        termsAgreedAt: new Date(),
-        isActive: true,
-        isRestricted: false,
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-      },
+    user = await repo.upsertRegisteredUser({
+      email: normalizedEmail,
+      passwordHash,
+      firstName,
+      lastName,
+      gender,
+      profileImage,
+      agencyId: agencyId ?? null,
+      isAgreeWithTerms,
+      termsAgreedAt: new Date(),
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -128,7 +103,6 @@ const verifyOtpAndCompleteAction = async (
   const { code, purpose } = payload;
   const email = payload.email.trim().toLowerCase();
 
-  // Validate OTP
   await OtpService.verifyOtp(email, purpose, code);
 
   switch (purpose) {
@@ -139,34 +113,13 @@ const verifyOtpAndCompleteAction = async (
 
       let user;
       try {
-        user = await prisma.$transaction(async (tx) => {
-          const updatedUser = await tx.user.update({
-            where: { email },
-            data: {
-              emailVerifiedAt: new Date(),
-              isActive: true,
-              isRestricted: false,
-            },
-          });
-
-          await tx.session.create({
-            data: {
-              id: sessionId,
-              userId: updatedUser.id,
-              userAgent: meta.userAgent ?? null,
-              ipAddress: meta.ip ?? null,
-              expiresAt: sessionExpiresAt,
-              refreshTokens: {
-                create: {
-                  tokenHash,
-                  expiresAt: sessionExpiresAt,
-                  isUsed: false,
-                },
-              },
-            },
-          });
-
-          return updatedUser;
+        user = await repo.verifyEmailAndCreateSession({
+          email,
+          sessionId,
+          userAgent: meta.userAgent ?? null,
+          ipAddress: meta.ip ?? null,
+          expiresAt: sessionExpiresAt,
+          tokenHash,
         });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -217,24 +170,8 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
   const { password, fcmToken, rememberMe } = payload;
   const email = payload.email.trim().toLowerCase();
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      agencyId: true,
-      passwordHash: true,
-      isActive: true,
-      isRestricted: true,
-      deletedAt: true,
-      emailVerifiedAt: true,
-      failedLoginAttempts: true,
-      lockedUntil: true,
-    },
-  });
+  const user = await repo.findUserByEmailForAuth(email);
 
-  // Constant-time style failure to avoid account enumeration
   if (!user || user.deletedAt) {
     throw AppError.unauthorized('Invalid email or password');
   }
@@ -251,17 +188,9 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     const attempts = user.failedLoginAttempts + 1;
     const shouldLock = attempts >= env.LOCKOUT_MAX_ATTEMPTS;
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: shouldLock
-        ? {
-            failedLoginAttempts: 0,
-            lockedUntil: new Date(Date.now() + env.LOCKOUT_DURATION_MINUTES * 60 * 1000),
-          }
-        : { failedLoginAttempts: attempts },
-    });
-
     if (shouldLock) {
+      await repo.lockAccount(user.id, new Date(Date.now() + env.LOCKOUT_DURATION_MINUTES * 60_000));
+
       await recordAudit({
         action: AuditAction.ACCOUNT_LOCKED,
         entityType: 'User',
@@ -272,6 +201,8 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
         userAgent: meta.userAgent,
         metadata: { reason: 'too_many_failed_logins' },
       });
+    } else {
+      await repo.updateLoginFailureCount(user.id, attempts);
     }
 
     throw AppError.unauthorized('Invalid email or password');
@@ -285,12 +216,8 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
     throw AppError.forbidden('Your account is inactive or restricted');
   }
 
-  // Successful login clears the brute-force counter / lock.
   if (user.failedLoginAttempts > 0 || user.lockedUntil) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { failedLoginAttempts: 0, lockedUntil: null },
-    });
+    await repo.clearLoginLockout(user.id);
   }
 
   const sessionDays = rememberMe ? env.SESSION_LONG_TTL_DAYS : env.SESSION_SHORT_TTL_DAYS;
@@ -298,31 +225,14 @@ const login = async (payload: AuthInputType['loginPayload'], meta: ClientMeta) =
   const sessionId = crypto.randomUUID();
   const { tokenHash, refreshToken } = AuthUtils.generateOpaqueRefreshToken(sessionId);
 
-  await prisma.$transaction(async (tx) => {
-    if (fcmToken) {
-      await tx.session.updateMany({
-        where: { fcmToken },
-        data: { fcmToken: null },
-      });
-    }
-
-    await tx.session.create({
-      data: {
-        id: sessionId,
-        userId: user.id,
-        fcmToken: fcmToken ?? null,
-        userAgent: meta.userAgent ?? null,
-        ipAddress: meta.ip ?? null,
-        expiresAt: sessionExpiresAt,
-        refreshTokens: {
-          create: {
-            tokenHash,
-            expiresAt: sessionExpiresAt,
-            isUsed: false,
-          },
-        },
-      },
-    });
+  await repo.createLoginSession({
+    userId: user.id,
+    sessionId,
+    fcmToken: fcmToken ?? null,
+    userAgent: meta.userAgent ?? null,
+    ipAddress: meta.ip ?? null,
+    expiresAt: sessionExpiresAt,
+    tokenHash,
   });
 
   const accessToken = await AuthUtils.signAccessToken({
@@ -367,23 +277,7 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 
   const tokenHash = AuthUtils.hashToken(rawSecret);
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          role: true,
-          agencyId: true,
-          isActive: true,
-          isRestricted: true,
-        },
-      },
-      refreshTokens: {
-        where: { tokenHash },
-      },
-    },
-  });
+  const session = await repo.findSessionWithRefreshToken(sessionId, tokenHash);
 
   if (!session || session.revokedAt || !session.user) {
     throw AppError.unauthorized('Session has expired or been revoked');
@@ -395,15 +289,8 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 
   const currentTokenRecord = session.refreshTokens[0];
 
-  // Token reuse detection: revoke session completely
   if (!currentTokenRecord || currentTokenRecord.isUsed) {
-    await prisma.session.update({
-      where: { id: sessionId },
-      data: {
-        revokedAt: new Date(),
-        fcmToken: null,
-      },
-    });
+    await repo.revokeSessionById(sessionId);
     throw AppError.unauthorized('Invalid refresh token. Please sign in again.');
   }
 
@@ -416,28 +303,14 @@ const refreshTokens = async (incomingRefreshToken: string, meta: ClientMeta) => 
 
   const expiresAt = currentTokenRecord.expiresAt;
 
-  await prisma.$transaction([
-    prisma.refreshToken.update({
-      where: { id: currentTokenRecord.id },
-      data: { isUsed: true },
-    }),
-    prisma.refreshToken.create({
-      data: {
-        sessionId,
-        tokenHash: nextTokenHash,
-        expiresAt,
-        isUsed: false,
-      },
-    }),
-    prisma.session.update({
-      where: { id: sessionId },
-      data: {
-        lastActiveAt: new Date(),
-        ipAddress: meta.ip ?? session.ipAddress,
-        userAgent: meta.userAgent ?? session.userAgent,
-      },
-    }),
-  ]);
+  await repo.rotateRefreshToken({
+    currentTokenId: currentTokenRecord.id,
+    sessionId,
+    nextTokenHash,
+    expiresAt,
+    ipAddress: meta.ip,
+    userAgent: meta.userAgent,
+  });
 
   const accessToken = await AuthUtils.signAccessToken({
     userId: session.user.id,
@@ -460,20 +333,7 @@ const logout = async (incomingRefreshToken: string) => {
   try {
     const { sessionId, rawSecret } = AuthUtils.parseCompoundToken(incomingRefreshToken);
     const tokenHash = AuthUtils.hashToken(rawSecret);
-
-    await prisma.$transaction([
-      prisma.session.update({
-        where: { id: sessionId },
-        data: {
-          revokedAt: new Date(),
-          fcmToken: null,
-        },
-      }),
-      prisma.refreshToken.updateMany({
-        where: { sessionId, tokenHash },
-        data: { isUsed: true },
-      }),
-    ]);
+    await repo.logoutSessionAndToken(sessionId, tokenHash);
   } catch {
     // Fail silently to avoid breaking client-side logout triggers
   }
@@ -485,19 +345,14 @@ const logout = async (incomingRefreshToken: string) => {
 const forgotPassword = async (payload: AuthInputType['forgotPasswordPayload']) => {
   const { email } = payload;
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, email: true },
-  });
+  const user = await repo.findUserByEmailForReset(email);
 
-  // Return success even if user not found to prevent user enumeration
   if (!user) {
     return { success: true };
   }
 
   const { rawToken, tokenHash } = AuthUtils.generateResetToken();
 
-  // 15-minute TTL
   await cache.set(`pwd-reset:${tokenHash}`, user.id, 15 * 60);
 
   await recordAudit({
@@ -535,17 +390,7 @@ const resetPassword = async (payload: AuthInputType['resetPasswordPayload']) => 
 
   const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-  // Update password, revoke all active sessions for security, and consume token
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash },
-    }),
-    prisma.session.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date(), fcmToken: null },
-    }),
-  ]);
+  await repo.resetPasswordAndRevokeSessions(userId, passwordHash);
 
   await cache.del(`pwd-reset:${tokenHash}`);
 
@@ -566,12 +411,8 @@ const resendOtp = async (payload: AuthInputType['resendOtpPayload'], meta: Clien
   const email = payload.email.trim().toLowerCase();
   const { purpose } = payload;
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, emailVerifiedAt: true },
-  });
+  const user = await repo.findUserByEmailVerifyState(email);
 
-  // Never reveal whether an account exists / is already verified.
   if (!user) {
     return { success: true };
   }
@@ -586,18 +427,7 @@ const resendOtp = async (payload: AuthInputType['resendOtpPayload'], meta: Clien
 // 9. SESSIONS
 // ==========================================
 const listSessions = async (userId: string, currentSessionId: string) => {
-  const sessions = await prisma.session.findMany({
-    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
-    select: {
-      id: true,
-      userAgent: true,
-      ipAddress: true,
-      lastActiveAt: true,
-      createdAt: true,
-      expiresAt: true,
-    },
-    orderBy: { lastActiveAt: 'desc' },
-  });
+  const sessions = await repo.listActiveSessionsByUserId(userId);
 
   return sessions.map((session) => ({
     ...session,
@@ -606,12 +436,8 @@ const listSessions = async (userId: string, currentSessionId: string) => {
 };
 
 const revokeSession = async (userId: string, sessionId: string) => {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { userId: true, revokedAt: true },
-  });
+  const session = await repo.findSessionOwnership(sessionId);
 
-  // Treat missing/foreign sessions as not found to avoid leaking session ids.
   if (!session || session.userId !== userId) {
     throw AppError.notFound('Session not found');
   }
@@ -620,10 +446,7 @@ const revokeSession = async (userId: string, sessionId: string) => {
     return { success: true };
   }
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { revokedAt: new Date(), fcmToken: null },
-  });
+  await repo.revokeSessionById(sessionId);
 
   await recordAudit({
     action: AuditAction.SESSION_REVOKED,
@@ -636,10 +459,7 @@ const revokeSession = async (userId: string, sessionId: string) => {
 };
 
 const revokeOtherSessions = async (userId: string, currentSessionId: string) => {
-  const result = await prisma.session.updateMany({
-    where: { userId, id: { not: currentSessionId }, revokedAt: null },
-    data: { revokedAt: new Date(), fcmToken: null },
-  });
+  const result = await repo.revokeOtherSessionsByUserId(userId, currentSessionId);
 
   await recordAudit({
     action: AuditAction.SESSION_REVOKED,

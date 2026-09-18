@@ -6,7 +6,7 @@ import { authLimiter } from '@/middlewares/rateLimiter.middleware';
 import { validateRequest } from '@/middlewares/validateRequest.middleware';
 import { Router } from 'express';
 import { AuthController } from './auth.controller';
-import { AuthSchema } from './auth.schema';
+import { AuthSchema } from './auth.schemas';
 
 const router = Router();
 

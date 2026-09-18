@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AuthSchema } from '@/modules/auth/auth.schema';
+import { AuthSchema } from '@/modules/auth/auth.schemas';
 
 describe('AuthSchema.resetPasswordSchema', () => {
   it('rejects a weak new password', () => {

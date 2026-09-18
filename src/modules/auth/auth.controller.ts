@@ -5,7 +5,7 @@ import { validatedBody, validatedParams } from '@/middlewares/validateRequest.mi
 import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
 import { UsersService } from '../users/users.service';
-import { AuthInputType } from './auth.schema';
+import { AuthInputType } from './auth.schemas';
 import { AuthService } from './auth.service';
 
 const REFRESH_COOKIE_NAME = 'jid';

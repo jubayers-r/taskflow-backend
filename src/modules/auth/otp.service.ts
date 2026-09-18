@@ -1,9 +1,9 @@
 // otp.service.ts
 import { env } from '@/config';
-import { prisma } from '@/lib/prisma';
 import { emailQueue } from '@/lib/queue';
 import { AppError } from '@/lib/response/AppError';
 import { OtpChannel, OtpPurpose } from '@/prisma/generated/enums';
+import * as repo from './auth.repository';
 import { AuthUtils } from './auth.utils';
 
 const sendOtp = async (
@@ -11,10 +11,7 @@ const sendOtp = async (
   purpose: OtpPurpose,
   meta?: { ip?: string; userAgent?: string },
 ) => {
-  const latestActive = await prisma.otp.findFirst({
-    where: { identifier, purpose, consumedAt: null },
-    orderBy: { createdAt: 'desc' },
-  });
+  const latestActive = await repo.findLatestActiveOtp(identifier, purpose);
 
   if (latestActive) {
     const elapsedSeconds = (Date.now() - latestActive.lastSentAt.getTime()) / 1000;
@@ -25,25 +22,20 @@ const sendOtp = async (
     }
   }
 
-  await prisma.otp.updateMany({
-    where: { identifier, purpose, consumedAt: null },
-    data: { consumedAt: new Date() },
-  });
+  await repo.consumeActiveOtpsFor(identifier, purpose);
 
   const rawCode = AuthUtils.generateOtpCode();
   const codeHash = AuthUtils.hashOtp(rawCode);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-  await prisma.otp.create({
-    data: {
-      identifier,
-      codeHash,
-      purpose,
-      channel: OtpChannel.EMAIL,
-      expiresAt,
-      ipAddress: meta?.ip,
-      userAgent: meta?.userAgent,
-    },
+  await repo.createOtp({
+    identifier,
+    codeHash,
+    purpose,
+    channel: OtpChannel.EMAIL,
+    expiresAt,
+    ipAddress: meta?.ip,
+    userAgent: meta?.userAgent,
   });
 
   if (env.NODE_ENV === 'development') {
@@ -63,38 +55,29 @@ const sendOtp = async (
 };
 
 const verifyOtp = async (identifier: string, purpose: OtpPurpose, code: string) => {
-  const record = await prisma.otp.findFirst({
-    where: { identifier, purpose, consumedAt: null },
-    orderBy: { createdAt: 'desc' },
-  });
+  const record = await repo.findLatestActiveOtp(identifier, purpose);
 
   if (!record) {
     throw AppError.unauthorized('Verification code expired or not found');
   }
 
   if (new Date() > record.expiresAt) {
-    await prisma.otp.update({ where: { id: record.id }, data: { consumedAt: new Date() } });
+    await repo.consumeOtp(record.id);
     throw AppError.unauthorized('Verification code has expired');
   }
 
   if (record.attempts >= record.maxAttempts) {
-    await prisma.otp.update({ where: { id: record.id }, data: { consumedAt: new Date() } });
+    await repo.consumeOtp(record.id);
     throw AppError.unauthorized('Too many failed attempts. Request a new code.');
   }
 
   const isValid = AuthUtils.verifyOtpHash(code, record.codeHash);
   if (!isValid) {
-    await prisma.otp.update({
-      where: { id: record.id },
-      data: { attempts: { increment: 1 } },
-    });
+    await repo.incrementOtpAttempts(record.id);
     throw AppError.unauthorized('Invalid verification code');
   }
 
-  await prisma.otp.update({
-    where: { id: record.id },
-    data: { consumedAt: new Date() },
-  });
+  await repo.consumeOtp(record.id);
 
   return true;
 };
