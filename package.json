@@ -55,6 +55,9 @@
   "peerDependencies": {
     "typescript": "^6"
   },
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@bull-board/api": "^9.10.1",
