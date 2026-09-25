@@ -8,7 +8,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -18,14 +17,25 @@ jobs:
       packages: write
     outputs:
       version: ${{ steps.version.outputs.value }}
+      image_name: ${{ steps.image_meta.outputs.image_name }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Compute image name (strictly lowercase)
+        id: image_meta
+        run: |
+          raw_name="${{ env.REGISTRY }}/${{ github.repository }}"
+          echo "image_name=$(echo "$raw_name" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Compute image version
         id: version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          echo "value=${tag:-latest}" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            echo "value=${tag}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log in to the container registry
         uses: docker/login-action@v4
@@ -40,8 +50,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
+            ${{ steps.image_meta.outputs.image_name }}:latest
+            ${{ steps.image_meta.outputs.image_name }}:${{ steps.version.outputs.value }}
 
   deploy:
     needs: build-and-push
@@ -49,23 +59,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
-        # The target server is expected to have:
-        #   - this repo checked out at /opt/taskflow
-        #   - a populated .env.production alongside docker-compose.prod.yml
-        #   - Docker + the compose plugin installed
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script_stop: true
-          script: |
-            set -e
-            cd /opt/taskflow
-            git pull --ff-only
-            docker pull ghcr.io/${{ github.repository }}:${{ needs.build-and-push.outputs.version }}
-            COMPOSE_FILE=docker-compose.prod.yml \
-              docker compose --env-file .env.production run --rm migrate
-            COMPOSE_FILE=docker-compose.prod.yml \
-              docker compose --env-file .env.production up -d --force-recreate app
-            docker image prune -f
+          envs: IMAGE_NAME,IMAGE_TAG
+        env:
+          IMAGE_NAME: ${{ needs.build-and-push.outputs.image_name }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
+        script: |
+          set -e
+          cd /opt/taskflow
+          git pull --ff-only
+
+          # Pull the newly pushed image
+          docker pull "$IMAGE_NAME:$IMAGE_TAG"
+
+          # Run migration and deploy using the exact version tag
+          IMAGE_TAG="$IMAGE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
+            docker compose --env-file .env.production run --rm migrate
+
+          IMAGE_TAG="$IMAGE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
+            docker compose --env-file .env.production up -d --force-recreate app
+
+          docker image prune -f
