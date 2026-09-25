@@ -1,10 +1,10 @@
-import client, { Counter, Gauge, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from '@prometheus-io/client';
 
 export const metricsRegistry = new Registry();
 
 // Process-level metrics (event loop, heap, GC, etc.) exposed with a prefix so
 // multiple services can safely share one Prometheus instance.
-client.collectDefaultMetrics({ register: metricsRegistry, prefix: 'taskflow_' });
+collectDefaultMetrics({ register: metricsRegistry, prefix: 'taskflow_' });
 
 export const httpRequestsTotal = new Counter({
   name: 'taskflow_http_requests_total',

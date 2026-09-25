@@ -30,9 +30,14 @@ const envSchema = z
     ALLOWED_ORIGINS: z.string().transform((val) => val.split(',').map((origin) => origin.trim())),
 
     // JWT config
-
+    // Durations follow jose's timespan format ("15m", "2h", "30d") so a bad
+    // value fails at boot instead of when signing tokens. Bare seconds are
+    // also accepted for legacy env files.
     JWT_ACCESS_SECRET: z.string().min(1),
-    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+    JWT_ACCESS_EXPIRES_IN: z
+      .string()
+      .regex(/^(?:\d+[smhd]|\d+)$/, 'must be a timespan like "15m", "2h", "30d", or seconds')
+      .default('15m'),
     SALT_ROUNDS: z.coerce.number().int().min(1).default(12),
 
     // OTP
