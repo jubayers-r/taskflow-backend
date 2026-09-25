@@ -53,7 +53,7 @@ jobs:
         #   - this repo checked out at /opt/taskflow
         #   - a populated .env.production alongside docker-compose.prod.yml
         #   - Docker + the compose plugin installed
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
