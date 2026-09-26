@@ -11,6 +11,10 @@ RUN bun install --frozen-lockfile
 
 COPY prisma.config.ts ./
 COPY prisma ./prisma
+# prisma.config.ts resolves the datasource url through this helper. Prisma loads
+# the config file even for `generate`, so the import must resolve or the build
+# fails before the client is ever produced.
+COPY src/config/database-url.ts ./src/config/database-url.ts
 # Prisma's config reads DATABASE_URL at generation time; a syntactically valid
 # placeholder is enough because generating does not connect to the database.
 RUN DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma?schema=public" \
@@ -28,6 +32,10 @@ RUN bun install --frozen-lockfile --ignore-scripts
 
 COPY prisma.config.ts ./
 COPY prisma ./prisma
+# prisma.config.ts resolves the datasource url through this helper, so the CLI
+# cannot start without it. It is dependency-free by design, which is what makes
+# it safe to lift out of src/ on its own.
+COPY src/config/database-url.ts ./src/config/database-url.ts
 
 CMD ["bunx", "prisma", "migrate", "deploy"]
 

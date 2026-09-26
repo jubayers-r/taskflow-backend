@@ -39,11 +39,12 @@ services:
     logging: *json-logs
 
   # --- One-shot schema migration ---
+  # Runs the `migrate` target of the Dockerfile, which carries the Prisma CLI
+  # and prisma.config.ts. The app image cannot run migrations: it is a
+  # --production install, so the CLI is not present in it.
   migrate:
-    image: ${IMAGE_NAME:?IMAGE_NAME is required}:${IMAGE_TAG:-latest}
+    image: ${IMAGE_NAME:?IMAGE_NAME is required}:migrate-${MIGRATE_TAG:-latest}
     restart: 'no'
-    # Override container entrypoint/cmd to run migrations
-    command: ['bun', 'run', 'prisma', 'migrate', 'deploy']
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
     depends_on:
@@ -67,6 +68,7 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       OTP_PEPPER_SECRET: ${OTP_PEPPER_SECRET:?OTP_PEPPER_SECRET is required}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:?CONFIG_ENCRYPTION_KEY is required}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
