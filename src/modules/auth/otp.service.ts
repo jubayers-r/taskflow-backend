@@ -13,7 +13,9 @@ const sendOtp = async (
 ) => {
   const latestActive = await repo.findLatestActiveOtp(identifier, purpose);
 
-  if (latestActive) {
+  // No resend cooldown in local development: the code is returned in the
+  // response body there anyway, so waiting a minute only slows the flow down.
+  if (latestActive && env.NODE_ENV !== 'development') {
     const elapsedSeconds = (Date.now() - latestActive.lastSentAt.getTime()) / 1000;
     if (elapsedSeconds < 60) {
       throw AppError.tooManyRequests(

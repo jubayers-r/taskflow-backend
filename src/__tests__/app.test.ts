@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import app from '@/app';
+import { env } from '@/config';
 
 describe('app', () => {
   it('exposes service metadata at /api/v1', async () => {
@@ -53,6 +54,14 @@ describe('app', () => {
 
   it('sets rate limit headers on the API surface', async () => {
     const res = await request(app).get('/api/v1');
+
+    // Throttling is off in development (rateLimiter.middleware.ts), and local
+    // test runs inherit NODE_ENV from .env, so branch on what is actually
+    // configured instead of assuming one environment.
+    if (env.NODE_ENV === 'development') {
+      expect(res.headers['ratelimit-limit']).toBeUndefined();
+      return;
+    }
 
     expect(res.headers['ratelimit-limit']).toBeDefined();
   });

@@ -22,7 +22,7 @@ describeRoute({
   summary: 'Register a new account',
   body: AuthSchema.registerSchema,
   responses: {
-    200: 'Registration accepted',
+    200: 'Registration accepted; returns otpSent and, in development only, the otp code',
     409: 'Email already registered',
     422: 'Validation error',
   },

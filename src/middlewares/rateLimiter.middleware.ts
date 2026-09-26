@@ -1,3 +1,4 @@
+import { env } from '@/config';
 import { AppError } from '@/lib/response/AppError';
 import { isRedisEnabled, redis } from '@/lib/redis';
 import rateLimit, { type Options } from 'express-rate-limit';
@@ -24,6 +25,11 @@ const createLimiter = (prefix: string, options: Partial<Options> = {}) => {
     windowMs: FIFTEEN_MINUTES,
     standardHeaders: true,
     legacyHeaders: false,
+    // Local development never throttles: hammering register/login/OTP from one
+    // IP is the normal workflow there, and a 15-minute window is pure friction.
+    // Counters are also never recorded, so the window cannot carry over into a
+    // later run against the same store.
+    skip: () => env.NODE_ENV === 'development',
     // Route 429s through the global error handler so they share the unified
     // `{ success, message, code, correlationId }` envelope.
     handler: (_req, _res, next) => {

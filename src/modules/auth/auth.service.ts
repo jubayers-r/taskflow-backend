@@ -97,17 +97,11 @@ const register = async (payload: AuthInputType['registerPayload']) => {
     otpSent = false;
   }
 
-  if (env.NODE_ENV === 'development') {
-    return {
-      user,
-      otpSent,
-      otp: otp ? `Account created. OTP: ${otp.code}` : undefined,
-    };
-  }
-
   return {
     user,
     otpSent,
+    // Dev never queues the email, so the raw code is returned here instead.
+    otp: env.NODE_ENV === 'development' ? otp?.code : undefined,
     message: otpSent
       ? 'Account created. Please check your email for your verification code.'
       : 'Account created, but we could not deliver the verification code. Please click "Resend Code".',

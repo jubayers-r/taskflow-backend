@@ -1,9 +1,10 @@
 // auth.controller.ts
+import { env } from '@/config';
 import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
 import { validatedBody, validatedParams } from '@/middlewares/validateRequest.middleware';
-import catchAsync from '@/utils/catchAsync';
 import { UsersSerializer } from '@/modules/users/users.serializer';
+import catchAsync from '@/utils/catchAsync';
 import { CookieOptions, Request, Response } from 'express';
 import { AuthInputType } from './auth.schemas';
 import { AuthService } from './auth.service';
@@ -23,10 +24,17 @@ const extractClientMeta = (req: Request) => req.clientMeta;
 
 const registerHandler = catchAsync(async (req: Request, res: Response) => {
   const payload = validatedBody<AuthInputType['registerPayload']>(req);
-  const result = await AuthService.register(payload);
 
-  req.log.info({ email: payload.email }, 'User registered successfully');
-  return sendResponse.ok(res, UsersSerializer.userSummary(result.user), result.message);
+  if (env.NODE_ENV === 'production') {
+    const result = await AuthService.register(payload);
+    req.log.info({ email: payload.email }, 'User registered successfully');
+    return sendResponse.ok(res, UsersSerializer.userSummary(result.user), result.message);
+  }
+  const { user, otpSent, otp, message } = await AuthService.register(payload);
+
+  req.log.info({ email: payload.email, otpSent }, 'User registered successfully');
+
+  return sendResponse.ok(res, { ...UsersSerializer.userSummary(user), otpSent, otp }, message);
 });
 
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
