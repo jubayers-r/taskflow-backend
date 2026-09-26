@@ -24,10 +24,14 @@ model Project {
     description String?
     tasks       Task[]
 
-    createdAt    DateTime      @default(now())
-    updatedAt    DateTime      @updatedAt
-    agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-    agencyId     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+    agencyId  String
+    // Soft delete. Set instead of removing the row so tasks and audit history
+    // keep referring to a real project. Filtered in every list query; reads of a
+    // soft-deleted project return 404 like any other tenant-scoped miss.
+    deletedAt    DateTime?
     activityLogs ActivityLog[]
 
     @@index([agencyId])
