@@ -3,10 +3,10 @@ import { AppError } from '@/lib/response/AppError';
 import sendResponse from '@/lib/response/response';
 import { validatedBody, validatedParams } from '@/middlewares/validateRequest.middleware';
 import catchAsync from '@/utils/catchAsync';
+import { UsersSerializer } from '@/modules/users/users.serializer';
+import { UsersService } from '@/modules/users/users.service';
 import { CookieOptions, Request, Response } from 'express';
-import { UsersService } from '../users/users.service';
 import { AuthInputType } from './auth.schemas';
-import { AuthSerializer } from './auth.serializer';
 import { AuthService } from './auth.service';
 
 const REFRESH_COOKIE_NAME = 'jid';
@@ -27,7 +27,7 @@ const registerHandler = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.register(payload);
 
   req.log.info({ email: payload.email }, 'User registered successfully');
-  return sendResponse.ok(res, result.user, result.message);
+  return sendResponse.ok(res, UsersSerializer.userSummary(result.user), result.message);
 });
 
 const loginHandler = catchAsync(async (req: Request, res: Response) => {
@@ -111,8 +111,10 @@ const meHandler = catchAsync(async (req: Request, res: Response) => {
   if (!req.auth) {
     throw AppError.unauthorized();
   }
-  const user = await UsersService.getCurrentUser(req.auth.userId);
-  return sendResponse.ok(res, AuthSerializer.currentUser(user), 'Current user');
+  // Delegates to the users module so there is one service and one serializer
+  // behind both /auth/me and /users/me. Kept for backwards compatibility.
+  const user = await UsersService.getCurrentUser(req.auth);
+  return sendResponse.ok(res, UsersSerializer.currentUser(user), 'Current user');
 });
 
 const listSessionsHandler = catchAsync(async (req: Request, res: Response) => {
