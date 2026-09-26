@@ -27,16 +27,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // 1. REGISTER
 // ==========================================
 const register = async (payload: AuthInputType['registerPayload']) => {
-  const {
-    email,
-    password,
-    firstName,
-    lastName,
-    gender,
-    profileImage,
-    agencyName,
-    isAgreeWithTerms,
-  } = payload;
+  const { email, password, firstName, lastName, gender, profileImage, isAgreeWithTerms } = payload;
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -48,20 +39,15 @@ const register = async (payload: AuthInputType['registerPayload']) => {
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  // Tenancy is server-derived. The registrant becomes OWNER of an agency
-  // provisioned for them; there is no client-supplied agencyId to abuse.
-  const resolvedAgencyName = agencyName?.trim() || `${firstName.trim()}'s Agency`;
-
   let user;
   try {
-    user = await repo.registerUserWithAgency({
+    user = await repo.registerUser({
       email: normalizedEmail,
       passwordHash,
       firstName,
       lastName,
       gender,
       profileImage,
-      agencyName: resolvedAgencyName,
       isAgreeWithTerms,
       termsAgreedAt: new Date(),
     });

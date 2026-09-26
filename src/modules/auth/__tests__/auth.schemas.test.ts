@@ -55,16 +55,9 @@ describe('AuthSchema.registerSchema', () => {
     }
   });
 
-  it('accepts an agencyName display label', () => {
+  it('rejects an agencyName: registration takes no tenancy input at all', () => {
     const result = AuthSchema.registerSchema.safeParse({ ...validBody, agencyName: 'Ada Studio' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects an over-long agencyName', () => {
-    const result = AuthSchema.registerSchema.safeParse({
-      ...validBody,
-      agencyName: 'x'.repeat(101),
-    });
     expect(result.success).toBe(false);
+    expect(JSON.stringify(result)).toContain('agencyName');
   });
 });

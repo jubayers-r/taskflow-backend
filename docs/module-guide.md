@@ -73,8 +73,9 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
   where there is no token yet. An `agencyId` in a client payload is a tenant
   takeover: the attacker joins the target agency and reads its data. This exact
   bug shipped once in `registerSchema`; the schema is `.strict()` so it now
-  fails loudly. Assign tenancy server-side and take only a display label (e.g.
-  `agencyName`) from the client.
+  fails loudly. Registration accepts **no tenancy input at all**: no `agencyId`,
+  no `agencyName`, and no agency row is provisioned — a new account starts with
+  `agencyId: null` until an agency assigns it one.
 
 ## Input / output
 

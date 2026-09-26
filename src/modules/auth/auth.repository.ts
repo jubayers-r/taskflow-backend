@@ -47,8 +47,6 @@ export interface RegisteredUserInput {
   lastName?: string | null;
   gender: GenderEnum;
   profileImage?: string | null;
-  /** Display label for the agency the server provisions. Never a tenant id. */
-  agencyName: string;
   isAgreeWithTerms: boolean;
   termsAgreedAt: Date;
 }
@@ -72,23 +70,15 @@ const registeredUserSelect = {
 } as const;
 
 /**
- * Registers a user together with the agency they own.
+ * Creates the user account for a fresh registration. No agency is provisioned
+ * here: tenancy input is never accepted from a client (an `agencyId` in the
+ * body is a tenant takeover), and the account starts with `agencyId: null` and
+ * the default role until an agency assigns it one.
  *
- * Tenancy is derived here, server-side. An `agencyId` on the registration body
- * would let anyone attach a fresh account to an existing agency and read that
- * tenant's data, so the id is never accepted from a client — only a display
- * name is.
- *
- * Both writes share one transaction because each row is useless alone: a user
- * with no `agencyId` is rejected by `requireTenant` on every tenant-scoped
- * route, and an agency with no owner is unreachable and unmanageable.
- *
- * Re-registering an unverified email updates the profile in place and keeps the
- * existing tenancy — it must not mint a second agency.
+ * Re-registering an unverified email updates the profile in place and keeps
+ * whatever tenancy it already has — it never mints a second agency.
  */
-export const registerUserWithAgency = async (
-  input: RegisteredUserInput,
-): Promise<RegisteredUserResult> => {
+export const registerUser = async (input: RegisteredUserInput): Promise<RegisteredUserResult> => {
   const profile = {
     passwordHash: input.passwordHash,
     firstName: input.firstName,
@@ -102,31 +92,21 @@ export const registerUserWithAgency = async (
   const existing = await findUserByEmailVerifyState(input.email);
 
   if (existing) {
-    const user = await prisma.user.update({
+    return prisma.user.update({
       where: { email: input.email },
       data: profile,
       select: registeredUserSelect,
     });
-    return user;
   }
 
-  return prisma.$transaction(async (tx) => {
-    const agency = await tx.agency.create({
-      data: { name: input.agencyName },
-      select: { id: true },
-    });
-
-    return tx.user.create({
-      data: {
-        ...profile,
-        email: input.email,
-        agencyId: agency.id,
-        role: UserRole.OWNER,
-        isActive: true,
-        isRestricted: false,
-      },
-      select: registeredUserSelect,
-    });
+  return prisma.user.create({
+    data: {
+      ...profile,
+      email: input.email,
+      isActive: true,
+      isRestricted: false,
+    },
+    select: registeredUserSelect,
   });
 };
 

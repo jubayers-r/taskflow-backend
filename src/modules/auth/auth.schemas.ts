@@ -19,15 +19,11 @@ const registerSchema = z
     lastName: z.string().trim().min(1, 'Last name cannot be empty').optional(),
     gender: z.enum(GenderEnum, 'Invalid gender value'),
     profileImage: z.url('Profile image must be a valid URL').optional(),
-    // Tenancy is NEVER client-supplied. An `agencyId` in this body let a
-    // registrant attach themselves to any existing agency, so the server
-    // provisions the user's own agency instead. Only a display label is accepted.
-    agencyName: z
-      .string('Agency name must be a string')
-      .trim()
-      .min(1, 'Agency name cannot be empty')
-      .max(100, 'Agency name must not exceed 100 characters')
-      .optional(),
+    // Tenancy is NEVER client-supplied. An `agencyId` (or any alias of it) in
+    // this body would let a registrant attach themselves to an existing agency,
+    // so registration accepts no tenancy input at all — no agency id, no agency
+    // name. The schema is .strict(), so the key fails loudly instead of being
+    // silently stripped.
     isAgreeWithTerms: z.literal(true, 'You must agree with the terms and conditions'),
   })
   .strict();

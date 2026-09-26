@@ -17,18 +17,21 @@ Guidelines when resuming:
 
 ## B1 — Agencies, Team & Invitations
 
-The tenancy product layer. Registration now provisions an OWNER-managed
-single-member agency transactionally — see `registerUserWithAgency` in
-`src/modules/auth/auth.repository.ts` — so every new account has an `agencyId`
-and `requireTenant` passes for it. **The `src/modules/agencies/` module does not
-exist yet:** the agency row is created but nothing reads, lists, or manages it.
-This milestone builds the product layer on top of that row.
+The tenancy product layer. Registration is now tenancy-free: it takes no
+`agencyId` and no `agencyName`, and `registerUser` in
+`src/modules/auth/auth.repository.ts` creates only the user row — so a new
+account starts with `agencyId: null`, role MEMBER, and `requireTenant` rejects
+it on tenant-scoped routes until an agency adopts it. **The
+`src/modules/agencies/` module does not exist yet:** this milestone builds the
+whole product layer, including the path that creates the agency row (an
+owner's first workspace) and attaches the owner to it.
 
 > Tenancy is server-derived and must stay that way. `agencyId` was previously
 > accepted in the register body and written straight to the user row, which let
 > anyone register into an existing agency and read that tenant's data. The
-> register schema is `.strict()` and now rejects it. Never add a tenant id to a
-> client-supplied payload.
+> register schema is `.strict()` and now rejects it (as it rejects
+> `agencyName`). Never add a tenant id or tenancy input to a client-supplied
+> payload.
 
 **Schema**: `Invitation` is already modelled (`PENDING/ACCEPTED/REJECTED`,
 token, expiresAt, role). `User.role` holds OWNER/MANAGER/MEMBER.
@@ -36,6 +39,10 @@ token, expiresAt, role). `User.role` holds OWNER/MANAGER/MEMBER.
 **Scope**:
 
 - `src/modules/agencies/` vertical slice per the module guide.
+- `POST /agencies` (authenticated, `agencyId: null`) — create the caller's
+  agency and set `user.agencyId` + `role: OWNER` in one transaction (unique
+  per user; enumeration-safe); this is what replaces the agency provisioning
+  that registration used to do.
 - `GET /agencies/me` — agency + members (paginated), OWNER/MANAGER view allowed.
 - `PATCH /agencies/me` (OWNER) — name/description.
 - `POST /agencies/invitations` (OWNER/MANAGER) — email, role; creates
