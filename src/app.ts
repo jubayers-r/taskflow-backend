@@ -1,7 +1,6 @@
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
-import { apiReference } from '@scalar/express-api-reference';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -13,6 +12,7 @@ import { env } from './config';
 import { buildOpenApiDocument } from './lib/openapi';
 import { emailBullQueue } from './lib/queue';
 import { collectMetrics, metricsRegistry } from './lib/metrics';
+import { mountScalarDocs } from './lib/scalar-docs';
 import { attachClientMeta } from './middlewares/clientMeta.middleware';
 import { errorHandler } from './middlewares/errorHandler.middleware';
 import { metricsMiddleware } from './middlewares/metrics.middleware';
@@ -22,21 +22,6 @@ import { HealthRoutes } from './modules/health/health.routes';
 import { notFoundHandler } from './middlewares/notFoundHandler.middleware';
 import { requestIdMiddleware } from './middlewares/requestId.middleware';
 import Routes from './routes';
-
-// Scalar loads its bundle from a CDN and ships an inline init script, so the
-// default helmet CSP (`script-src 'self'`) would blank the page. Relax it for
-// this read-only route only, leaving the strict policy everywhere else.
-const docsContentSecurityPolicy = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-  "style-src 'self' 'unsafe-inline' https:",
-  "img-src 'self' data: https:",
-  "font-src 'self' https: data:",
-  "worker-src 'self' blob: https://cdn.jsdelivr.net",
-  "connect-src 'self' https://cdn.jsdelivr.net",
-  "object-src 'none'",
-  "base-uri 'self'",
-].join('; ');
 
 /**
  * Builds a fully-wired Express application. Exported as a factory so tests can
@@ -116,12 +101,7 @@ export const createApp = (): Application => {
   const openApiDocument = buildOpenApiDocument();
   app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
 
-  app.use('/docs', (_req, res, next) => {
-    res.setHeader('Content-Security-Policy', docsContentSecurityPolicy);
-    next();
-  });
-
-  app.use('/docs', apiReference({ url: '/openapi.json' }));
+  mountScalarDocs(app);
 
   //global API not found middleware
   app.use(notFoundHandler);

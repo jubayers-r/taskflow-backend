@@ -109,6 +109,17 @@ Operational endpoints are unversioned (for probes, load balancers, and dashboard
 | `GET /metrics`      | Prometheus metrics (unthrottled, pre-limiter)      |
 | `GET /admin/queues` | Bull Board queue dashboard (only when Redis is on) |
 
+### Testing role-protected endpoints in Scalar
+
+`/docs` has a **Test as** picker for the roles declared by Prisma's `UserRole`
+enum: `OWNER`, `MANAGER`, and `MEMBER`. Select a role, call `POST /api/v1/auth/login`
+with an account that has that role, then use any protected endpoint. Scalar stores
+the returned access token under that JWT's actual role and sends only the selected
+role's token. Use **Clear token** to remove the selected role's saved access token.
+
+The picker is a local browser convenience only. It grants no permissions: the API
+always authorizes from the role inside the signed JWT.
+
 Business endpoints are versioned under `/api/v1`:
 
 | Endpoint                            | Description                                        |

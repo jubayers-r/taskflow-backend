@@ -88,5 +88,9 @@ describe('app', () => {
     // Scalar's CDN bundle and inline init script must survive the helmet CSP.
     expect(docs.headers['content-security-policy']).toContain('https://cdn.jsdelivr.net');
     expect(docs.headers['content-security-policy']).toContain("'unsafe-inline'");
+    expect(docs.text).toContain('taskflow-docs-role-picker');
+    expect(docs.text).toContain('OWNER');
+    expect(docs.text).toContain('MANAGER');
+    expect(docs.text).toContain('MEMBER');
   });
 });
