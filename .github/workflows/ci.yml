@@ -70,3 +70,45 @@ jobs:
         # policy (severity threshold) is agreed.
         run: bun audit
         continue-on-error: true
+
+  # Workflow YAML is deliberately outside `verify`, which only typechecks and
+  # tests application code. GitHub refuses to schedule ANY job from an invalid
+  # workflow file, so the run turns red in under a second with zero jobs and no
+  # log to read — that is how a misplaced `script:` key went unnoticed for two
+  # days. actionlint also picks up the runner's shellcheck and lints the shell
+  # inside every `run:` block.
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install actionlint
+        env:
+          # Bump when releasing; dependabot only tracks `uses:` references, not
+          # pinned binaries downloaded in a `run:` step.
+          ACTIONLINT_VERSION: '1.7.12'
+        run: |
+          curl -fsSL -o /tmp/actionlint.tgz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/actionlint.tgz -C /tmp
+          rm /tmp/actionlint.tgz
+          /tmp/actionlint --version
+
+      - name: Lint workflow files
+        run: /tmp/actionlint -color
+
+  # The Dockerfile has no coverage in `verify` either: commit bab51d0 shipped a
+  # COPY that omitted src/config/database-url.ts, which broke `prisma generate`
+  # in the builder stage, and no CI job noticed until a deploy failed. Both
+  # published targets are built here — `runner` is also the default target, so
+  # building it covers what `docker build .` produces.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build runtime image
+        run: docker build --target runner --tag taskflow:runner .
+
+      - name: Build migration image
+        run: docker build --target migrate --tag taskflow:migrate .
