@@ -1,5 +1,5 @@
 import { envSchema, resolveDatabaseUrl } from '@/config';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const validEnv = {
   PROJECT_NAME: 'test',
@@ -65,10 +65,27 @@ describe('TEST_DATABASE_URL validation', () => {
   });
 
   it('rejects a non-postgres URL rather than failing later at connect time', () => {
-    const parsed = envSchema.safeParse({ ...validEnv, TEST_DATABASE_URL: 'mysql://u:p@host/db' });
+    const parsed = envSchema.safeParse({ ...validEnv, TEST_DATABASE_URL: 'mysql://u:pw@host/db' });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
       expect(parsed.error.issues.some((i) => i.path[0] === 'TEST_DATABASE_URL')).toBe(true);
     }
+  });
+});
+
+describe('prisma.config.ts', () => {
+  it('resolves the same database as the app so a migration cannot hit the wrong one', async () => {
+    // The CLI does not load `src/config`, so it used to read DATABASE_URL
+    // straight out of `.env` while the app used the test branch. The result was
+    // `prisma migrate deploy` migrating the developer database. `dotenv/config`
+    // does not override existing values, so the stub below survives the import.
+    const branchUrl = 'postgresql://u:pw@branch-host/neondb_test?sslmode=require';
+    vi.stubEnv('TEST_DATABASE_URL', branchUrl);
+    vi.resetModules();
+
+    const config = (await import('../../prisma.config')).default;
+
+    expect(config.datasource?.url).toBe(branchUrl);
+    vi.unstubAllEnvs();
   });
 });

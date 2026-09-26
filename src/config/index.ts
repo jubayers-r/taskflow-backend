@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+import { redactUrl, resolveDatabaseUrl } from './database-url';
 
 // Explicitly load this project's .env and let it win over inherited shell values.
 loadEnv({ override: true });
@@ -124,37 +125,16 @@ if (!_env.success) {
 /**
  * Chooses which database this process talks to.
  *
- * This lives here, and not in the test setup file, on purpose. Config calls
- * `loadEnv({ override: true })`, so anything that mutates `process.env` *before*
- * config is imported gets silently reverted by the project's own `.env`. An
- * earlier version of the test setup redirected `process.env.DATABASE_URL` from
- * this function's perspective only; `loadEnv` then overwrote it, and the
- * integration suites quietly pointed at the developer database instead of the
- * test branch. Resolving after the parse makes the rule independent of module
- * evaluation order, of which process manager launched the tests, and of whether
- * a `.env` file happens to exist.
+ * This lives in a dependency-free module shared with `prisma.config.ts`, not in
+ * the test setup file, on purpose. Config calls `loadEnv({ override: true })`,
+ * so anything that mutates `process.env` *before* config is imported gets
+ * silently reverted by the project's own `.env`. An earlier version of the test
+ * setup redirected `process.env.DATABASE_URL` from this function's perspective
+ * only; `loadEnv` then overwrote it, and the integration suites quietly pointed
+ * at the developer database instead of the test branch. Resolving after the
+ * parse makes the rule independent of module evaluation order, of which process
+ * manager launched the tests, and of whether a `.env` file happens to exist.
  */
-export const resolveDatabaseUrl = (vars: {
-  DATABASE_URL: string;
-  TEST_DATABASE_URL?: string;
-}): string => {
-  const testUrl = vars.TEST_DATABASE_URL?.trim();
-  // Empty and whitespace-only count as unset. The schema already normalises
-  // these away, but this function must be safe for any caller, and returning ''
-  // here would mean a Prisma client built with an empty connection string.
-  return testUrl ? testUrl : vars.DATABASE_URL;
-};
-
-/** Strips credentials so a database URL is safe to log. */
-const redactUrl = (url: string): string => {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.hostname}/${parsed.pathname.replace(/^\//, '')}`;
-  } catch {
-    return '<unparseable>';
-  }
-};
-
 const resolvedDatabaseUrl = resolveDatabaseUrl(_env.data);
 
 if (_env.data.TEST_DATABASE_URL) {
@@ -167,3 +147,5 @@ if (_env.data.TEST_DATABASE_URL) {
 }
 
 export const env = { ..._env.data, DATABASE_URL: resolvedDatabaseUrl };
+
+export { resolveDatabaseUrl, redactUrl } from './database-url';
