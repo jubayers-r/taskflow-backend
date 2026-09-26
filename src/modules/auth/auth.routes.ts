@@ -188,7 +188,7 @@ router.delete('/sessions', authenticate, AuthController.revokeOtherSessionsHandl
 
 describeRoute({
   method: 'delete',
-  path: '/api/v1/auth/sessions/{id}',
+  path: '/api/v1/auth/sessions/:id',
   tags: ['Auth'],
   summary: 'Revoke a specific session',
   security: true,

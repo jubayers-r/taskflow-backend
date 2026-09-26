@@ -6,6 +6,11 @@ type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export interface RouteDoc {
   method: HttpMethod;
+  /**
+   * The path exactly as Express declares it, e.g. `/users/:id`. Express `:param`
+   * segments are rewritten to OpenAPI `{param}` templating on the way in, so a
+   * route can never be documented under a path it does not serve.
+   */
   path: string;
   summary: string;
   tags?: string[];
@@ -16,6 +21,17 @@ export interface RouteDoc {
   /** Marks the route as requiring a Bearer access token. */
   security?: boolean;
 }
+
+/**
+ * Rewrites Express `:param` path segments into OpenAPI 3 `{param}` templates.
+ *
+ * Hand-writing `{id}` next to `router.delete('/sessions/:id')` invites drift —
+ * the two spellings look interchangeable but only one of them is the route the
+ * server actually serves. Normalising here means the doc and the route are
+ * written once, in the same syntax.
+ */
+const toOpenApiPath = (expressPath: string): string =>
+  expressPath.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
 
 /**
  * Shared OpenAPI registry. Route modules register themselves at import time so
@@ -35,6 +51,8 @@ registry.registerComponent('securitySchemes', 'bearerAuth', {
  *
  *   describeRoute({ method: 'post', path: '/auth/login', body: AuthSchema.loginSchema,
  *     summary: 'Log in', responses: { 200: 'Tokens issued', 401: 'Invalid credentials' } });
+ *
+ * Pass the path exactly as the route declares it — `:id`, not `{id}`.
  */
 export const describeRoute = ({
   method,
@@ -47,7 +65,7 @@ export const describeRoute = ({
 }: RouteDoc) => {
   registry.registerPath({
     method,
-    path,
+    path: toOpenApiPath(path),
     summary,
     tags,
     security: security ? [{ bearerAuth: [] }] : undefined,
