@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { GenderEnum, OtpChannel, OtpPurpose } from '@/prisma/generated/enums';
+import { UserRole } from '@/prisma/generated/enums';
 
 /**
  * ALL Prisma access for the auth domain lives here — users, sessions, refresh
@@ -46,28 +47,86 @@ export interface RegisteredUserInput {
   lastName?: string | null;
   gender: GenderEnum;
   profileImage?: string | null;
-  agencyId: string | null;
+  /** Display label for the agency the server provisions. Never a tenant id. */
+  agencyName: string;
   isAgreeWithTerms: boolean;
   termsAgreedAt: Date;
 }
 
-export const upsertRegisteredUser = (input: RegisteredUserInput) => {
-  const data = {
+export interface RegisteredUserResult {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string | null;
+  role: (typeof UserRole)[keyof typeof UserRole];
+  agencyId: string | null;
+}
+
+const registeredUserSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  role: true,
+  agencyId: true,
+} as const;
+
+/**
+ * Registers a user together with the agency they own.
+ *
+ * Tenancy is derived here, server-side. An `agencyId` on the registration body
+ * would let anyone attach a fresh account to an existing agency and read that
+ * tenant's data, so the id is never accepted from a client — only a display
+ * name is.
+ *
+ * Both writes share one transaction because each row is useless alone: a user
+ * with no `agencyId` is rejected by `requireTenant` on every tenant-scoped
+ * route, and an agency with no owner is unreachable and unmanageable.
+ *
+ * Re-registering an unverified email updates the profile in place and keeps the
+ * existing tenancy — it must not mint a second agency.
+ */
+export const registerUserWithAgency = async (
+  input: RegisteredUserInput,
+): Promise<RegisteredUserResult> => {
+  const profile = {
     passwordHash: input.passwordHash,
     firstName: input.firstName,
     lastName: input.lastName,
     gender: input.gender,
     profileImage: input.profileImage,
-    agencyId: input.agencyId,
     isAgreeWithTerms: input.isAgreeWithTerms,
     termsAgreedAt: input.termsAgreedAt,
   };
 
-  return prisma.user.upsert({
-    where: { email: input.email },
-    update: data,
-    create: { ...data, email: input.email, isActive: true, isRestricted: false },
-    select: { id: true, email: true, firstName: true, lastName: true },
+  const existing = await findUserByEmailVerifyState(input.email);
+
+  if (existing) {
+    const user = await prisma.user.update({
+      where: { email: input.email },
+      data: profile,
+      select: registeredUserSelect,
+    });
+    return user;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const agency = await tx.agency.create({
+      data: { name: input.agencyName },
+      select: { id: true },
+    });
+
+    return tx.user.create({
+      data: {
+        ...profile,
+        email: input.email,
+        agencyId: agency.id,
+        role: UserRole.OWNER,
+        isActive: true,
+        isRestricted: false,
+      },
+      select: registeredUserSelect,
+    });
   });
 };
 

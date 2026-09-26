@@ -2,7 +2,9 @@
 import { env } from '@/config';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import { cache } from '@/lib/cache';
+import { logger } from '@/lib/logger';
 import { emailQueue } from '@/lib/queue';
+import { getRequestContext } from '@/lib/requestContext';
 import { AppError } from '@/lib/response/AppError';
 import { Prisma } from '@/prisma/generated/client';
 import bcrypt from 'bcrypt';
@@ -25,8 +27,16 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // 1. REGISTER
 // ==========================================
 const register = async (payload: AuthInputType['registerPayload']) => {
-  const { email, password, firstName, lastName, gender, profileImage, agencyId, isAgreeWithTerms } =
-    payload;
+  const {
+    email,
+    password,
+    firstName,
+    lastName,
+    gender,
+    profileImage,
+    agencyName,
+    isAgreeWithTerms,
+  } = payload;
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -38,16 +48,20 @@ const register = async (payload: AuthInputType['registerPayload']) => {
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
+  // Tenancy is server-derived. The registrant becomes OWNER of an agency
+  // provisioned for them; there is no client-supplied agencyId to abuse.
+  const resolvedAgencyName = agencyName?.trim() || `${firstName.trim()}'s Agency`;
+
   let user;
   try {
-    user = await repo.upsertRegisteredUser({
+    user = await repo.registerUserWithAgency({
       email: normalizedEmail,
       passwordHash,
       firstName,
       lastName,
       gender,
       profileImage,
-      agencyId: agencyId ?? null,
+      agencyName: resolvedAgencyName,
       isAgreeWithTerms,
       termsAgreedAt: new Date(),
     });
@@ -66,14 +80,20 @@ const register = async (payload: AuthInputType['registerPayload']) => {
     entityType: 'User',
     entityId: user.id,
     actorId: user.id,
-    agencyId: agencyId ?? null,
+    agencyId: user.agencyId,
     metadata: { email: normalizedEmail },
   });
 
   try {
     otp = await OtpService.sendOtp(normalizedEmail, 'VERIFY_EMAIL');
   } catch (error) {
-    console.error('Failed to send OTP on register:', error);
+    // The account exists either way; the user can request a new code. Logged on
+    // the request-scoped logger so this line carries the same X-Request-Id as
+    // the rest of the request, then the flow continues.
+    (getRequestContext()?.logger ?? logger).error(
+      { err: error, email: normalizedEmail },
+      'Failed to send verification OTP on register',
+    );
     otpSent = false;
   }
 
