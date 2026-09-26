@@ -16,7 +16,9 @@ src/modules/<domain>/
   <domain>.schemas.ts     Zod boundary: body / params / query. Pagination,
                           filters, and sorts are defined inline per endpoint
                           (page≥1, limit 1..100, keyset/offset math completed
-                          in the service — controllers never compute offsets)
+                          in the service — controllers never compute offsets).
+                          Omit this file only when the module accepts no input
+                          at all (e.g. users, which only serves GET /me).
   <domain>.controller.ts  Thin: read req.validated, call service, sendResponse
   <domain>.service.ts     Business rules only; tenancy + ownership; AppError.
                           May call prisma directly for plain CRUD
@@ -61,11 +63,18 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
   scope inline. List queries always filter by `agencyId`. Single-resource reads
   use `findFirst({ where: { id, agencyId } })` — **never**
   `findUnique({ where: { id } })` on a tenant-owned resource, or a cross-tenant
-  id would leak data.
+  id would leak data. Scope by the agency even when it is `null`:
+  `agencyId: auth.agencyId ?? null` keeps the tenancy filter in the query
+  instead of dropping it.
 - A 404 (not 403) is returned when a resource is not found within the tenant —
   this avoids confirming other tenants' resource ids.
-- `req.auth.agencyId` is the only acceptable tenant source. Never trust an
-  `agencyId` from the request body; the tenant comes from the token.
+- `req.auth.agencyId` is the only acceptable tenant source. **Never accept an
+  `agencyId` from a request body, query, or param** — not even at registration,
+  where there is no token yet. An `agencyId` in a client payload is a tenant
+  takeover: the attacker joins the target agency and reads its data. This exact
+  bug shipped once in `registerSchema`; the schema is `.strict()` so it now
+  fails loudly. Assign tenancy server-side and take only a display label (e.g.
+  `agencyName`) from the client.
 
 ## Input / output
 
@@ -101,6 +110,10 @@ authenticate → requireTenant? → authorize(roles?)? → validateRequest? → 
 
 1. Module matches the anatomy above.
 2. All list endpoints paginated + capped; all resource reads tenant-scoped.
-3. `describeRoute` per endpoint; `src/__tests__/openapi.test.ts` stays green.
+3. `describeRoute` per endpoint, using the same path string the route declares
+   (`:id`, not `{id}`). This is **machine-enforced**:
+   `src/__tests__/routeDocs.test.ts` fails if a mounted domain route is
+   undocumented or a documented path is not served. When you add a new domain
+   router, add it to `DOMAIN_ROUTERS` in that file so its routes are audited.
 4. Colocated tests cover happy/validation/tenancy/authz paths.
 5. `bun run verify` is green (typecheck, lint, format, tests, coverage gate).

@@ -6,7 +6,7 @@ Express 5 + TypeScript REST API, run with [Bun](https://bun.sh) and [Prisma](htt
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.2+
+- [Bun](https://bun.sh) 1.3+ (CI pins `1.3.9`)
 - PostgreSQL 16+
 - Redis 7+ (optional; enable with `USE_REDIS=true`)
 
@@ -78,32 +78,45 @@ Configuration is validated at startup with Zod; the process refuses to boot on i
 
 Operational endpoints are unversioned (for probes, load balancers, and dashboards):
 
-| Endpoint            | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `GET /`             | Redirects to `/health`                          |
-| `GET /health`       | HTML status dashboard (database, Redis, queue)  |
-| `GET /health/live`  | Liveness probe (no dependency checks)           |
-| `GET /health/ready` | Readiness probe (503 when a dependency is down) |
-| `GET /healthz`      | Alias for liveness                              |
-| `GET /readyz`       | Alias for readiness                             |
-| `GET /docs`         | Interactive API reference (Scalar)              |
-| `GET /openapi.json` | OpenAPI 3.1 document                            |
+| Endpoint            | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| `GET /`             | Redirects to `/health`                             |
+| `GET /health`       | HTML status dashboard (database, Redis, queue)     |
+| `GET /health/live`  | Liveness probe (no dependency checks)              |
+| `GET /health/ready` | Readiness probe (503 when a dependency is down)    |
+| `GET /healthz`      | Alias for liveness                                 |
+| `GET /readyz`       | Alias for readiness                                |
+| `GET /docs`         | Interactive API reference (Scalar)                 |
+| `GET /openapi.json` | OpenAPI 3.1 document                               |
+| `GET /metrics`      | Prometheus metrics (unthrottled, pre-limiter)      |
+| `GET /admin/queues` | Bull Board queue dashboard (only when Redis is on) |
 
 Business endpoints are versioned under `/api/v1`:
 
-| Endpoint                            | Description                 |
-| ----------------------------------- | --------------------------- |
-| `GET /api/v1`                       | API discovery document      |
-| `GET /api/v1/auth`                  | Auth endpoint index         |
-| `POST /api/v1/auth/register`        | Register a new account      |
-| `POST /api/v1/auth/verify-email`    | Verify an email with an OTP |
-| `POST /api/v1/auth/login`           | Log in                      |
-| `POST /api/v1/auth/refresh`         | Rotate a refresh token      |
-| `POST /api/v1/auth/logout`          | Revoke the current session  |
-| `POST /api/v1/auth/forgot-password` | Request a password reset    |
-| `POST /api/v1/auth/reset-password`  | Reset a password            |
+| Endpoint                            | Description                                        |
+| ----------------------------------- | -------------------------------------------------- |
+| `GET /api/v1`                       | Service metadata + links to the generated contract |
+| `GET /api/v1/auth`                  | Auth endpoint index                                |
+| `POST /api/v1/auth/register`        | Register a new account                             |
+| `POST /api/v1/auth/verify-email`    | Verify an email with an OTP                        |
+| `POST /api/v1/auth/login`           | Log in                                             |
+| `POST /api/v1/auth/refresh`         | Rotate a refresh token                             |
+| `POST /api/v1/auth/logout`          | Revoke the current session                         |
+| `POST /api/v1/auth/forgot-password` | Request a password reset                           |
+| `POST /api/v1/auth/reset-password`  | Reset a password                                   |
+| `POST /api/v1/auth/resend-otp`      | Resend a verification code                         |
+| `GET /api/v1/auth/me`               | Current user (legacy alias of `/users/me`)         |
+| `GET /api/v1/auth/sessions`         | List active sessions                               |
+| `DELETE /api/v1/auth/sessions`      | Revoke every session but the current one           |
+| `DELETE /api/v1/auth/sessions/:id`  | Revoke one specific session                        |
+| `GET /api/v1/users`                 | User endpoint index                                |
+| `GET /api/v1/users/me`              | Current user profile                               |
 
-Adding an endpoint? Register its docs with a single `describeRoute({ ... })` call next to the route definition (see `src/modules/auth/auth.routes.ts`). The OpenAPI document and Scalar UI update automatically.
+Adding an endpoint? Register its docs with a single `describeRoute({ ... })` call
+next to the route definition (see `src/modules/auth/auth.routes.ts`). Write the
+path exactly as Express declares it — `:id`, not `{id}`; `describeRoute` rewrites
+it to OpenAPI templating. `src/__tests__/routeDocs.test.ts` fails the build if a
+mounted route is left undocumented, so this is enforced, not a convention.
 
 ## Docker
 
@@ -145,7 +158,7 @@ During a deploy the app restarts; because the failure path is rolled forward by 
 ## Observability
 
 - **Logs** — structured JSON via [pino](https://getpino.io), request-correlated with `X-Request-Id`. Sensitive fields (passwords, OTP codes, tokens, authorization headers) are redacted at the sink. Request logs are level-aware: `error` ≥500, `warn` ≥400, `info` otherwise, and `debug` for health/metrics probes so scrapers don't flood production logs.
-- **Metrics** — Prometheus at `GET /metrics` (before the rate limiter so scrapers are never throttled). Collected with the Bun-runtime [`@prometheus-io/client`](https://github.com/prometheus/client_js) (the renamed successor of `prom-client`); set `Content-Type` from the registry's own `contentType`. Exposes `taskflow_`-prefixed process metrics plus per-route `taskflow_http_requests_total`, `taskflow_http_request_duration_seconds`, and `taskflow_http_inflight_requests` with bounded labels (`route`, `status`, `client=authenticated|anonymous`). Point Prometheus at `http://<app>:5000/metrics` and use [Grafana 19659](https://grafana.com/grafana/dashboards/19659-bun/) for the defaults.
+- **Metrics** — Prometheus at `GET /metrics` (before the rate limiter so scrapers are never throttled). Collected with the Bun-runtime [`@prometheus-io/client`](https://github.com/prometheus/client_js) (the renamed successor of `prom-client`); set `Content-Type` from the registry's own `contentType`. Exposes `taskflow_`-prefixed process metrics plus `taskflow_http_requests_total`, `taskflow_http_request_duration_seconds`, and `taskflow_http_inflight_requests`. Labels are `method`, `route` (the Express route pattern, never the raw path), `status_code`, and `client` (`authenticated|anonymous`) — all bounded, so cardinality stays fixed regardless of traffic. Point Prometheus at `http://<app>:5000/metrics` and use [Grafana 19659](https://grafana.com/grafana/dashboards/19659-bun/) for the defaults.
 - **Errors** — unhandled/`OperationalError`-unknown failures are captured to [Sentry](https://sentry.io) when `SENTRY_DSN` is set (no-op otherwise). Set `SENTRY_TRACES_SAMPLE_RATE` (default `0.1`) to trade tracing volume against cost.
 
 ## Docs & guidelines
@@ -164,7 +177,7 @@ src/
 ├── emails/               # React Email templates
 ├── lib/                  # prisma, redis, cache, queue, logger, openapi, response
 ├── middlewares/          # requestId, clientMeta, rate limiting, validation, errors
-├── modules/              # feature modules (auth, health)
+├── modules/              # feature modules (auth, health, users)
 ├── routes/               # versioned API router
 ├── services/             # email delivery
 ├── types/                # ambient TypeScript types

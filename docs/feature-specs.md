@@ -26,16 +26,21 @@ Anything not listed here is out of scope for the current milestone.
   - Offset math (`(page - 1) * limit`) happens in the **service**, not the
     controller. Cleanup deleted rows is the schema's `WHERE deletedAt = null`
     story, not offset logic.
-- Audit: state changes log via `recordAudit` with an `AuditAction` in
-  `src/lib/audit.ts` (extend the enum; never inline strings).
+- Audit: state changes log via `recordAudit` with an `AuditAction` constant in
+  `src/lib/audit.ts` (extend the `AuditAction` const object; never inline
+  strings).
 - Unit tests mock exactly one boundary — the repository if the flow has one,
   `@/lib/prisma` otherwise (see `src/modules/auth/__tests__/`). Every endpoint
   needs: happy path, validation failure, tenancy isolation (cross-tenant →
   404), authz (wrong role → 403).
-- `describeRoute` per endpoint so `src/__tests__/openapi.test.ts` stays green.
+- `describeRoute` per endpoint, written with the same path string the route uses
+  (`:id`, not `{id}` — `describeRoute` normalises to OpenAPI templating).
+  `src/__tests__/routeDocs.test.ts` fails the build if a mounted domain route is
+  undocumented or a documented path is not served, so this is enforced.
   Note: `describeRoute` in `src/lib/openapi.ts` currently supports only
   `method/path/tags/body/responses/security` — extend it with `query`/`params`
-  in the same commit that first needs them.
+  in the same commit that first needs them, and add the new router to
+  `DOMAIN_ROUTERS` in `routeDocs.test.ts` so its routes stay audited.
 
 ## Module: Projects
 
@@ -65,10 +70,10 @@ deletable, `createdAt`/`updatedAt`.
 Fields: `id`, `projectId`, `title`, `description`, `status`, `priority`,
 `assigneeId`, `dueDate`, `parentTaskId` (subtasks), `createdAt`, `updatedAt`.
 
-| Field      | Values                                                                      |
-| ---------- | --------------------------------------------------------------------------- |
-| `status`   | `TODO → IN_PROGRESS → IN_REVIEW → DONE` (allow reopen `DONE → IN_PROGRESS`) |
-| `priority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`                                           |
+| Field      | Values in the Prisma schema (`prisma/schema/agencies.prisma`)                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`   | `TODO → IN_PROGRESS → DONE` (allow reopen `DONE → IN_PROGRESS`) — **no `IN_REVIEW` exists; add it to the enum in the same commit if the workflow needs it** |
+| `priority` | `HIGH`, `MEDIUM`, `LOW` — **no `URGENT` exists; add it if required**                                                                                        |
 
 | Method | Path                         | Authz                                   | Notes                               |
 | ------ | ---------------------------- | --------------------------------------- | ----------------------------------- |
@@ -98,8 +103,8 @@ Fields: `id`, `projectId`, `title`, `description`, `status`, `priority`,
 ## Prisma / DB considerations (when implementing)
 
 - Add soft-delete columns + the unique constraint handling on top of
-  `deletedAt` (Prisma does not filter soft-deletes for you — repositories must
-  add `deletedAt: null` to every query).
+  `deletedAt` (Prisma does not filter soft-deletes for you — the service, or the
+  repository when one exists, must add `deletedAt: null` to every query).
 - Indexes: `tasks(agencyId, deletedAt)`, `tasks(projectId)`,
   `tasks(assigneeId)`, `projects(agencyId, deletedAt)`.
 - Audit actions to add in `src/lib/audit.ts`:

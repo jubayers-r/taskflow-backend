@@ -17,9 +17,18 @@ Guidelines when resuming:
 
 ## B1 — Agencies, Team & Invitations
 
-The tenancy product layer. Currently each verified registration auto-provisions
-an OWNER-managed single-member agency (`src/modules/agencies/`). This milestone
-turns that skeleton into a real team workspace.
+The tenancy product layer. Registration now provisions an OWNER-managed
+single-member agency transactionally — see `registerUserWithAgency` in
+`src/modules/auth/auth.repository.ts` — so every new account has an `agencyId`
+and `requireTenant` passes for it. **The `src/modules/agencies/` module does not
+exist yet:** the agency row is created but nothing reads, lists, or manages it.
+This milestone builds the product layer on top of that row.
+
+> Tenancy is server-derived and must stay that way. `agencyId` was previously
+> accepted in the register body and written straight to the user row, which let
+> anyone register into an existing agency and read that tenant's data. The
+> register schema is `.strict()` and now rejects it. Never add a tenant id to a
+> client-supplied payload.
 
 **Schema**: `Invitation` is already modelled (`PENDING/ACCEPTED/REJECTED`,
 token, expiresAt, role). `User.role` holds OWNER/MANAGER/MEMBER.
