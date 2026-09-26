@@ -39,6 +39,19 @@ bun run dev               # http://localhost:5000
 | `bun run test:coverage`     | Run Vitest with a coverage gate                     |
 | `bun run verify`            | Generate client + typecheck + lint + format + tests |
 
+Integration suites need a real, migrated Postgres. They run when
+`TEST_DATABASE_URL` is set and **skip silently** when it is not, so a green local
+run is not evidence that they passed. Apply the schema first:
+
+```bash
+bunx prisma migrate deploy   # runs against TEST_DATABASE_URL when it is set
+bun run test
+```
+
+Keep the test database disposable — the suites create and delete rows. On Neon,
+use a dedicated branch. Note that `TEST_DATABASE_URL` replaces `DATABASE_URL` for
+the whole process, `bun run dev` included, so remove it when you are done.
+
 ## Environment variables
 
 Copy `.env.example` to `.env`. The important ones:
@@ -51,6 +64,11 @@ LOG_LEVEL="info"
 TRUST_PROXY=1                       # trusted reverse-proxy hops for client IP
 
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/taskflow_db?schema=public"
+
+# Optional. Set it to run the integration suites; leave it unset and they skip.
+# It REPLACES DATABASE_URL for the entire process, so keep it pointed at a
+# throwaway database.
+TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/taskflow_test?schema=public"
 
 # Redis is optional. When disabled, in-memory queue/cache/rate-limit fallbacks are used.
 USE_REDIS=false

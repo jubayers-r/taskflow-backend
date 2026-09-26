@@ -4,12 +4,24 @@ import { z } from 'zod';
 // Explicitly load this project's .env and let it win over inherited shell values.
 loadEnv({ override: true });
 
-const envSchema = z
+export const envSchema = z
   .object({
     PROJECT_NAME: z.string().min(1),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.string().default('5000'),
     DATABASE_URL: z.string().min(1),
+    // Test-only, and optional on purpose: production has no such variable, so
+    // requiring it would stop the app from booting. When it *is* present this
+    // becomes the database the process actually talks to (resolveDatabaseUrl
+    // below). An empty value is treated as unset, because `TEST_DATABASE_URL=`
+    // in a .env file is a common accident and should not crash the boot.
+    TEST_DATABASE_URL: z.preprocess(
+      (val) => (val === '' ? undefined : val),
+      z
+        .string()
+        .regex(/^postgres(ql)?:\/\//, 'must be a postgresql:// connection string')
+        .optional(),
+    ),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     // Number of trusted reverse-proxy hops used to resolve the real client IP.
     TRUST_PROXY: z.coerce.number().int().min(0).default(1),
@@ -109,4 +121,49 @@ if (!_env.success) {
   throw new Error('Invalid environment variables');
 }
 
-export const env = _env.data;
+/**
+ * Chooses which database this process talks to.
+ *
+ * This lives here, and not in the test setup file, on purpose. Config calls
+ * `loadEnv({ override: true })`, so anything that mutates `process.env` *before*
+ * config is imported gets silently reverted by the project's own `.env`. An
+ * earlier version of the test setup redirected `process.env.DATABASE_URL` from
+ * this function's perspective only; `loadEnv` then overwrote it, and the
+ * integration suites quietly pointed at the developer database instead of the
+ * test branch. Resolving after the parse makes the rule independent of module
+ * evaluation order, of which process manager launched the tests, and of whether
+ * a `.env` file happens to exist.
+ */
+export const resolveDatabaseUrl = (vars: {
+  DATABASE_URL: string;
+  TEST_DATABASE_URL?: string;
+}): string => {
+  const testUrl = vars.TEST_DATABASE_URL?.trim();
+  // Empty and whitespace-only count as unset. The schema already normalises
+  // these away, but this function must be safe for any caller, and returning ''
+  // here would mean a Prisma client built with an empty connection string.
+  return testUrl ? testUrl : vars.DATABASE_URL;
+};
+
+/** Strips credentials so a database URL is safe to log. */
+const redactUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.hostname}/${parsed.pathname.replace(/^\//, '')}`;
+  } catch {
+    return '<unparseable>';
+  }
+};
+
+const resolvedDatabaseUrl = resolveDatabaseUrl(_env.data);
+
+if (_env.data.TEST_DATABASE_URL) {
+  // Loud, because this also redirects `bun run dev` and the dev server. Set it
+  // deliberately, and point it at a throwaway database.
+  console.warn(
+    `⚠️  TEST_DATABASE_URL is set — using the test database ${redactUrl(resolvedDatabaseUrl)} ` +
+      `instead of ${redactUrl(_env.data.DATABASE_URL)}. Never point this at a real database.`,
+  );
+}
+
+export const env = { ..._env.data, DATABASE_URL: resolvedDatabaseUrl };
