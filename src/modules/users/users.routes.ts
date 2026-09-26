@@ -1,26 +1,13 @@
 // users.routes.ts
+// No GET / index here, for the same reason as auth.routes.ts: a hand-written
+// endpoint list is a route table that drifts. /docs and /openapi.json are
+// generated from the describeRoute() calls, so they cannot.
 import { describeRoute } from '@/lib/openapi';
 import { authenticate } from '@/middlewares/auth.middleware';
 import { Router } from 'express';
 import { UsersController } from './users.controller';
 
 const router = Router();
-
-describeRoute({
-  method: 'get',
-  path: '/api/v1/users',
-  tags: ['Users'],
-  summary: 'List available user endpoints',
-  responses: { 200: 'User endpoint index' },
-});
-router.get('/', (_req, res) =>
-  res.json({
-    resource: 'users',
-    endpoints: {
-      me: 'GET /api/v1/users/me',
-    },
-  }),
-);
 
 describeRoute({
   method: 'get',

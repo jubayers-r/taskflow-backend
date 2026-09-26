@@ -1,6 +1,10 @@
 // routes/auth.routes.ts
+// No GET / index here on purpose. A hand-written list of this module's endpoints
+// is a second route table that drifts the moment a route is added — it was
+// already stale at 10 of 12. /docs and /openapi.json are generated from the
+// describeRoute() calls below, so they cannot drift. The versioned root
+// (GET /api/v1) is the only place that advertises the service.
 import { describeRoute } from '@/lib/openapi';
-import sendResponse from '@/lib/response/response';
 import { authenticate } from '@/middlewares/auth.middleware';
 import { authLimiter } from '@/middlewares/rateLimiter.middleware';
 import { validateRequest } from '@/middlewares/validateRequest.middleware';
@@ -9,35 +13,6 @@ import { AuthController } from './auth.controller';
 import { AuthSchema } from './auth.schemas';
 
 const router = Router();
-
-describeRoute({
-  method: 'get',
-  path: '/api/v1/auth',
-  tags: ['Auth'],
-  summary: 'List available auth endpoints',
-  responses: { 200: 'Auth endpoint index' },
-});
-router.get('/', (_req, res) =>
-  sendResponse.ok(
-    res,
-    {
-      resource: 'auth',
-      endpoints: {
-        register: 'POST /api/v1/auth/register',
-        verifyEmail: 'POST /api/v1/auth/verify-email',
-        login: 'POST /api/v1/auth/login',
-        refresh: 'POST /api/v1/auth/refresh',
-        logout: 'POST /api/v1/auth/logout',
-        me: 'GET /api/v1/auth/me',
-        sessions: 'GET /api/v1/auth/sessions',
-        forgotPassword: 'POST /api/v1/auth/forgot-password',
-        resetPassword: 'POST /api/v1/auth/reset-password',
-        resendOtp: 'POST /api/v1/auth/resend-otp',
-      },
-    },
-    'Auth API',
-  ),
-);
 
 // Sensitive credential / OTP endpoints are rate limited per client.
 describeRoute({

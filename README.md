@@ -96,7 +96,6 @@ Business endpoints are versioned under `/api/v1`:
 | Endpoint                            | Description                                        |
 | ----------------------------------- | -------------------------------------------------- |
 | `GET /api/v1`                       | Service metadata + links to the generated contract |
-| `GET /api/v1/auth`                  | Auth endpoint index                                |
 | `POST /api/v1/auth/register`        | Register a new account                             |
 | `POST /api/v1/auth/verify-email`    | Verify an email with an OTP                        |
 | `POST /api/v1/auth/login`           | Log in                                             |
@@ -109,7 +108,6 @@ Business endpoints are versioned under `/api/v1`:
 | `GET /api/v1/auth/sessions`         | List active sessions                               |
 | `DELETE /api/v1/auth/sessions`      | Revoke every session but the current one           |
 | `DELETE /api/v1/auth/sessions/:id`  | Revoke one specific session                        |
-| `GET /api/v1/users`                 | User endpoint index                                |
 | `GET /api/v1/users/me`              | Current user profile                               |
 
 Adding an endpoint? Register its docs with a single `describeRoute({ ... })` call
@@ -117,6 +115,14 @@ next to the route definition (see `src/modules/auth/auth.routes.ts`). Write the
 path exactly as Express declares it — `:id`, not `{id}`; `describeRoute` rewrites
 it to OpenAPI templating. `src/__tests__/routeDocs.test.ts` fails the build if a
 mounted route is left undocumented, so this is enforced, not a convention.
+
+**Do not hand-write an endpoint index.** A route module used to serve
+`GET /api/v1/auth` listing its own endpoints, and that list was already stale at
+10 of 12 — the drift is invisible until someone trusts it. `/docs` and
+`/openapi.json` are generated from the `describeRoute()` calls, so they cannot
+drift. Resource collections have no collection-level `GET`; hitting one returns
+the standard 404 envelope, which points back at `/docs` in its body and via a
+`Link: </docs>; rel="describedby"` header.
 
 ## Docker
 
