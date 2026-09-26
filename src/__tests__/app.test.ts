@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import app from '@/app';
 
 describe('app', () => {
-  it('exposes API discovery at /api/v1', async () => {
+  it('exposes service metadata at /api/v1', async () => {
     const res = await request(app).get('/api/v1');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.apiVersion).toBe('v1');
+    expect(res.body.data.docs).toBe('/docs');
     expect(res.body.correlationId).toBeTruthy();
   });
 
