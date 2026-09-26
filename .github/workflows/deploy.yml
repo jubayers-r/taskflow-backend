@@ -76,30 +76,30 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.5
+        env:
+          IMAGE_NAME: ${{ needs.build-and-push.outputs.image_name }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
+          MIGRATE_TAG: ${{ needs.build-and-push.outputs.migrate_tag }}
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script_stop: true
           envs: IMAGE_NAME,IMAGE_TAG,MIGRATE_TAG
-        env:
-          IMAGE_NAME: ${{ needs.build-and-push.outputs.image_name }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
-          MIGRATE_TAG: ${{ needs.build-and-push.outputs.migrate_tag }}
-        script: |
-          set -e
-          cd /opt/taskflow
-          git pull --ff-only
+          script: |
+            set -e
+            cd /opt/taskflow
+            git pull --ff-only
 
-          # Pull the newly pushed images
-          docker pull "$IMAGE_NAME:$IMAGE_TAG"
-          docker pull "$IMAGE_NAME:migrate-$MIGRATE_TAG"
+            # Pull the newly pushed images
+            docker pull "$IMAGE_NAME:$IMAGE_TAG"
+            docker pull "$IMAGE_NAME:migrate-$MIGRATE_TAG"
 
-          # Run migration and deploy using the exact version tag
-          IMAGE_TAG="$IMAGE_TAG" MIGRATE_TAG="$MIGRATE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
-            docker compose --env-file .env.production run --rm migrate
+            # Run migration and deploy using the exact version tag
+            IMAGE_TAG="$IMAGE_TAG" MIGRATE_TAG="$MIGRATE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
+              docker compose --env-file .env.production run --rm migrate
 
-          IMAGE_TAG="$IMAGE_TAG" MIGRATE_TAG="$MIGRATE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
-            docker compose --env-file .env.production up -d --force-recreate app
+            IMAGE_TAG="$IMAGE_TAG" MIGRATE_TAG="$MIGRATE_TAG" COMPOSE_FILE=docker-compose.prod.yml \
+              docker compose --env-file .env.production up -d --force-recreate app
 
-          docker image prune -f
+            docker image prune -f
