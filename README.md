@@ -122,7 +122,6 @@ Business endpoints are versioned under `/api/v1`:
 | `POST /api/v1/auth/forgot-password` | Request a password reset                           |
 | `POST /api/v1/auth/reset-password`  | Reset a password                                   |
 | `POST /api/v1/auth/resend-otp`      | Resend a verification code                         |
-| `GET /api/v1/auth/me`               | Current user (legacy alias of `/users/me`)         |
 | `GET /api/v1/auth/sessions`         | List active sessions                               |
 | `DELETE /api/v1/auth/sessions`      | Revoke every session but the current one           |
 | `DELETE /api/v1/auth/sessions/:id`  | Revoke one specific session                        |

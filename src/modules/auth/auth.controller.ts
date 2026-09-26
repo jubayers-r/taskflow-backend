@@ -4,7 +4,6 @@ import sendResponse from '@/lib/response/response';
 import { validatedBody, validatedParams } from '@/middlewares/validateRequest.middleware';
 import catchAsync from '@/utils/catchAsync';
 import { UsersSerializer } from '@/modules/users/users.serializer';
-import { UsersService } from '@/modules/users/users.service';
 import { CookieOptions, Request, Response } from 'express';
 import { AuthInputType } from './auth.schemas';
 import { AuthService } from './auth.service';
@@ -107,16 +106,6 @@ const resendOtpHandler = catchAsync(async (req: Request, res: Response) => {
   return sendResponse.ok(res, result, 'Verification code sent');
 });
 
-const meHandler = catchAsync(async (req: Request, res: Response) => {
-  if (!req.auth) {
-    throw AppError.unauthorized();
-  }
-  // Delegates to the users module so there is one service and one serializer
-  // behind both /auth/me and /users/me. Kept for backwards compatibility.
-  const user = await UsersService.getCurrentUser(req.auth);
-  return sendResponse.ok(res, UsersSerializer.currentUser(user), 'Current user');
-});
-
 const listSessionsHandler = catchAsync(async (req: Request, res: Response) => {
   if (!req.auth) {
     throw AppError.unauthorized();
@@ -151,7 +140,6 @@ export const AuthController = {
   forgotPasswordHandler,
   resetPasswordHandler,
   resendOtpHandler,
-  meHandler,
   listSessionsHandler,
   revokeSessionHandler,
   revokeOtherSessionsHandler,

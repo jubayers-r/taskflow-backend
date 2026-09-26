@@ -133,16 +133,6 @@ router.post('/logout', AuthController.logoutHandler);
 
 describeRoute({
   method: 'get',
-  path: '/api/v1/auth/me',
-  tags: ['Auth'],
-  summary: 'Get the currently authenticated user',
-  security: true,
-  responses: { 200: 'Current user', 401: 'Missing or invalid access token' },
-});
-router.get('/me', authenticate, AuthController.meHandler);
-
-describeRoute({
-  method: 'get',
   path: '/api/v1/auth/sessions',
   tags: ['Auth'],
   summary: 'List active sessions for the current user',

@@ -39,7 +39,6 @@ describe('OpenAPI document', () => {
       type: 'http',
       scheme: 'bearer',
     });
-    expect(doc.paths['/api/v1/auth/me']?.get?.security).toEqual([{ bearerAuth: [] }]);
     expect(doc.paths['/api/v1/auth/login']?.post?.security).toBeUndefined();
   });
 });
